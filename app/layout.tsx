@@ -33,7 +33,7 @@ export default function RootLayout({
         <AuthProvider>
           <div className="flex w-full min-h-screen justify-center items-stretch bg-slate-50">
             {/* Full-width Responsive Viewport */}
-            <div className="w-full h-screen max-h-screen bg-lavender-100 flex flex-col relative overflow-hidden">
+            <div className="w-full h-dvh max-h-dvh bg-lavender-100 flex flex-col relative overflow-hidden">
               {children}
             </div>
           </div>

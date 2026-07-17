@@ -43,25 +43,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setProfile(data.user);
     } catch (err: any) {
       // If profile doesn't exist in our DB yet
+      // If profile doesn't exist in our DB yet, auto-sync/provision it
       if (err.message === 'User not found' || err.status === 404 || String(err).includes('404')) {
-        const isSignupFlow = 
-          typeof window !== 'undefined' && 
-          (window.location.pathname === '/onboarding' || window.location.pathname === '/signup');
-
-        if (isSignupFlow) {
-          try {
-            const syncData = await apiFetch('/auth/sync-profile', {
-              method: 'POST',
-              body: JSON.stringify({ 
-                full_name: currentUser.user_metadata?.full_name || null 
-              }),
-            });
-            setProfile(syncData.user);
-          } catch (syncErr) {
-            console.error('Failed to sync new profile', syncErr);
+        try {
+          const syncData = await apiFetch('/auth/sync-profile', {
+            method: 'POST',
+            body: JSON.stringify({ 
+              full_name: currentUser.user_metadata?.full_name || null 
+            }),
+          });
+          setProfile(syncData.user);
+          
+          // Redirect patients to onboarding if they haven't set their profile yet
+          if (typeof window !== 'undefined' && window.location.pathname === '/login') {
+            window.location.href = '/onboarding';
           }
-        } else {
-          console.warn('User authenticated but profile not found in database. Signing out.');
+        } catch (syncErr) {
+          console.error('Failed to auto-sync profile', syncErr);
+          // Only sign out as a last resort fallback
           try {
             await supabase.auth.signOut();
           } catch (signOutErr) {
@@ -71,7 +70,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(null);
           setSession(null);
           if (typeof window !== 'undefined') {
-            window.location.href = '/login?error=no_user';
+            window.location.href = '/login?error=sync_failed';
           }
         }
       } else {
@@ -85,8 +84,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
-      if (session?.user) refreshProfile(session.user);
-      else setIsLoading(false);
+      if (session?.user) {
+        refreshProfile(session.user).finally(() => setIsLoading(false));
+      } else {
+        setIsLoading(false);
+      }
     });
 
     // Listen for auth changes

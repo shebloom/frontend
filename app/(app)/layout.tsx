@@ -50,8 +50,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           {/* Pulsing logo */}
           <div className="relative">
             <div className="absolute inset-0 rounded-full bg-bloom-200/60 animate-ping" style={{ animationDuration: '2s' }} />
-            <div className="relative h-24 w-24 rounded-full bg-white shadow-bloom-card border border-bloom-100 flex items-center justify-center">
-              <BloomLogo size="md" showIcon layout="vertical" />
+            <div className="relative h-24 w-24 rounded-full bg-white shadow-bloom-card border border-bloom-100 flex items-center justify-center overflow-hidden">
+              <div className="relative w-16 h-12 overflow-hidden flex items-center justify-center">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img 
+                  src="/images/logo.png" 
+                  alt="SheBloom Butterfly" 
+                  className="w-24 max-w-none h-auto object-contain -translate-y-[10px]" 
+                />
+              </div>
             </div>
           </div>
           {/* Rotating spiritual message */}
@@ -78,7 +85,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <main className="flex-1 overflow-y-auto scrollbar-hide">
         {children}
       </main>
-      <BottomNav className="absolute bottom-0 left-0 right-0 w-full z-10" />
+      <BottomNav className="fixed bottom-0 left-0 right-0 z-50" />
     </div>
   );
 }
