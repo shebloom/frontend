@@ -1,0 +1,87 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Great+Vibes&family=Inter:wght@300;400;500;600;700&display=swap');
+
+:root {
+  --font-inter: 'Inter', system-ui, sans-serif;
+  --font-bloom: 'Great Vibes', cursive;
+  --foreground-rgb: 30, 20, 50;
+  --background-start-rgb: 249, 245, 255;
+  --background-end-rgb: 255, 255, 255;
+}
+
+@layer base {
+  :root {
+    --background: 270 100% 99%;
+    --foreground: 270 30% 12%;
+    --card: 0 0% 100%;
+    --card-foreground: 270 30% 12%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 270 30% 12%;
+    --primary: 270 72% 47%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 270 50% 96%;
+    --secondary-foreground: 270 30% 30%;
+    --muted: 270 30% 96%;
+    --muted-foreground: 270 15% 50%;
+    --accent: 320 72% 60%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 270 20% 90%;
+    --input: 270 20% 90%;
+    --ring: 270 72% 47%;
+    --radius: 0.75rem;
+    --chart-1: 270 72% 47%;
+    --chart-2: 320 72% 60%;
+    --chart-3: 160 60% 45%;
+    --chart-4: 30 80% 55%;
+    --chart-5: 0 84% 60%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-lavender-100 text-foreground;
+    font-family: var(--font-inter);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+@layer utilities {
+  /* Gradient text utility */
+  .text-bloom-gradient {
+    background: linear-gradient(135deg, #7c3aed 0%, #a855f7 50%, #ec4899 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Gradient border utility */
+  .border-bloom-gradient {
+    border: 2px solid transparent;
+    background-clip: padding-box;
+    background-image: linear-gradient(white, white),
+      linear-gradient(135deg, #7c3aed, #ec4899);
+    background-origin: border-box;
+  }
+
+  /* Safe area support for bottom nav */
+  .pb-safe {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+
+  /* Hide scrollbar visually while keeping scroll functionality */
+  .scrollbar-hide {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;     /* Firefox */
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;             /* Chrome, Safari, Opera */
+  }
+}
