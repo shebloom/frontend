@@ -239,7 +239,7 @@ export default function ProfilePage() {
             <div className="h-24 w-24 rounded-full ring-4 ring-bloom-200 overflow-hidden bg-bloom-100 flex items-center justify-center">
               {avatarBase64 || profile?.avatar_url ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={avatarBase64 || profile.avatar_url} alt="Avatar" className="h-full w-full object-cover" />
+                <img src={avatarBase64 || profile.avatar_url || undefined} alt="Avatar" className="h-full w-full object-cover" />
               ) : (
                 <span className="text-3xl font-bold text-bloom-600">{initials}</span>
               )}
