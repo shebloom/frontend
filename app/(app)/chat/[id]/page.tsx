@@ -192,7 +192,7 @@ export default function ChatPage() {
   };
 
   return (
-    <div className="flex h-screen flex-col">
+    <div className="absolute inset-x-0 top-0 bottom-[80px] flex flex-col bg-lavender-100">
       {/* Call Overlay */}
       {callActive && (
         <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-gradient-to-b from-slate-900 to-bloom-900">
@@ -258,18 +258,6 @@ export default function ChatPage() {
           </p>
         </div>
 
-        <button
-          onClick={() => startCall('voice')}
-          className="flex h-9 w-9 items-center justify-center rounded-full bg-bloom-50 hover:bg-bloom-100 transition"
-        >
-          <Phone className="h-4 w-4 text-bloom-600" />
-        </button>
-        <button
-          onClick={() => startCall('video')}
-          className="flex h-9 w-9 items-center justify-center rounded-full bg-bloom-50 hover:bg-bloom-100 transition"
-        >
-          <Video className="h-4 w-4 text-bloom-600" />
-        </button>
       </header>
 
       {/* Messages */}

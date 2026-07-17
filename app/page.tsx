@@ -18,14 +18,24 @@ export default function LandingPage() {
         </h2>
       </div>
 
-      {/* Doctor Image Panel */}
+      {/* Doctor Image Panel (Styled exactly like mockup) */}
       <div className="mt-auto mb-6 flex justify-center w-full px-4">
-        <div className="relative w-[240px] h-[240px] rounded-full overflow-hidden border-8 border-white shadow-bloom-card flex items-center justify-center bg-indigo-50">
+        <div className="relative w-full max-w-[280px] h-[320px] flex items-end justify-center">
+          {/* Abstract curved background behind doctor */}
+          <div className="absolute bottom-0 w-full h-[220px] bg-indigo-50 rounded-t-[140px] rounded-b-3xl -z-10" />
+          
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src="/images/dr_deepa_avatar.jpg"
+            src="/images/dr_deepa_cutout.png"
             alt="Dr. Deepa Madhavan"
-            className="w-full h-full object-cover object-top"
+            onError={(e) => {
+              // Fallback to the circular avatar while the background removal process finishes
+              const target = e.target as HTMLImageElement;
+              target.onerror = null;
+              target.src = "/images/dr_deepa_avatar.jpg";
+              target.className = "w-48 h-48 rounded-full object-cover shadow-lg mb-8 border-4 border-white";
+            }}
+            className="w-full h-auto object-contain z-10 scale-110 origin-bottom pb-4"
           />
         </div>
       </div>
