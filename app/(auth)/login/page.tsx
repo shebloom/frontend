@@ -7,10 +7,12 @@ import { BloomLogo, GradientButton } from '@/components/shebloom';
 import { ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@/components/auth-provider';
+import { useGoogleAuth } from '@/hooks/useGoogleAuth';
 
 export default function LoginPage() {
   const router = useRouter();
   const { refreshProfile } = useAuth();
+  const { signIn: googleSignIn } = useGoogleAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -57,8 +59,8 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="h-full overflow-y-auto bg-lavender-100">
-      <div className="mx-auto flex w-full max-w-[414px] flex-col bg-lavender-100 px-6 py-12">
+    <div className="h-screen overflow-hidden bg-lavender-100 flex items-center justify-center">
+      <div className="mx-auto flex w-full max-w-[414px] flex-col bg-lavender-100 px-6">
         <div className="mb-8">
           <Link href="/" className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white text-slate-600 shadow-sm transition-all hover:bg-slate-50">
             <ArrowLeft className="h-5 w-5" />
@@ -130,15 +132,13 @@ export default function LoginPage() {
           onClick={async () => {
             setError(null);
             try {
-              const { error } = await supabase.auth.signInWithOAuth({
-                provider: 'google',
-                options: {
-                  redirectTo: `${window.location.origin}/home`,
-                },
-              });
-              if (error) throw error;
+              await googleSignIn();
+              router.push('/home');
             } catch (err: any) {
-              setError(err.message || 'Google authentication failed');
+              // Don't show error if user just closed the popup
+              if (err.message !== 'popup_closed_by_user') {
+                setError(err.message || 'Google sign-in failed');
+              }
             }
           }}
           className="mt-6 flex w-full items-center justify-center gap-3 rounded-full border-2 border-bloom-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition-all hover:bg-bloom-50 active:scale-[0.98]"

@@ -75,8 +75,8 @@ export default function OnboardingPage() {
   };
 
   return (
-    <div className="min-h-screen bg-lavender-100 flex items-center justify-center p-0 md:p-6 overflow-hidden">
-      <div className="w-full max-w-full md:max-w-6xl md:grid md:grid-cols-12 bg-white md:rounded-3xl shadow-sm overflow-hidden min-h-screen md:min-h-0 md:h-[calc(100vh-3rem)] md:max-h-[800px]">
+    <div className="h-screen bg-lavender-100 flex items-center justify-center p-0 md:p-6 overflow-hidden">
+      <div className="w-full max-w-full md:max-w-6xl md:grid md:grid-cols-12 bg-white md:rounded-3xl shadow-sm overflow-hidden h-screen md:h-[calc(100vh-3rem)] md:max-h-[800px]">
         
         {/* Leftmost design: onboarding banner on desktop */}
         <div className="hidden md:flex md:col-span-5 bg-gradient-to-b from-[#FFF5F5] to-[#FFEAEA] p-6 flex-col justify-between relative overflow-hidden">

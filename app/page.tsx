@@ -7,7 +7,7 @@ export default function LandingPage() {
   const router = useRouter();
 
   return (
-    <div className="flex flex-1 flex-col bg-lavender-100 min-h-screen justify-between py-10 px-6">
+    <div className="flex flex-1 flex-col bg-lavender-100 h-screen overflow-hidden justify-between py-10 px-6">
       {/* Brand Header */}
       <div className="text-center flex flex-col items-center mt-2">
         <BloomLogo size="xl" layout="vertical" />

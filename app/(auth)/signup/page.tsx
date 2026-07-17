@@ -6,16 +6,18 @@ import { supabase } from '@/lib/supabase';
 import { BloomLogo, GradientButton } from '@/components/shebloom';
 import { ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import Link from 'next/link';
-import { apiFetch } from '@/lib/api';
+
 import { useAuth } from '@/components/auth-provider';
+import { useGoogleAuth } from '@/hooks/useGoogleAuth';
 
 export default function SignupPage() {
   const router = useRouter();
   const { refreshProfile } = useAuth();
+  const { signIn: googleSignIn } = useGoogleAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
-  const [showConfirmation, setShowConfirmation] = useState(false);
+
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -46,33 +48,37 @@ export default function SignupPage() {
     }
 
     try {
-      const { data, error: signUpError } = await supabase.auth.signUp({
+      // Step 1: Create the user via our backend (auto-confirms email)
+      const registerRes = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api'}/auth/register`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password, full_name: fullName }),
+        }
+      );
+
+      const registerData = await registerRes.json();
+
+      if (!registerRes.ok) {
+        throw new Error(registerData.error || 'Failed to create account');
+      }
+
+      // Step 2: Immediately sign in with the newly created credentials
+      const { error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password,
-        options: {
-          data: { full_name: fullName },
-        },
       });
 
-      if (signUpError) throw signUpError;
+      if (signInError) throw signInError;
 
-      // If Supabase returned a valid session (email confirmation disabled), sync profile
-      if (data.session) {
-        await apiFetch('/auth/sync-profile', {
-          method: 'POST',
-          body: JSON.stringify({ full_name: fullName }),
-        });
-        await refreshProfile();
-        router.push('/onboarding');
-      } else {
-        // Email confirmation is required — show a message
-        setShowConfirmation(true);
-      }
+      await refreshProfile();
+      router.push('/onboarding');
     } catch (err: any) {
       let friendlyError = 'Oops, something went wrong on our end. Please try again in a moment.';
       const msg = err.message || '';
       
-      if (msg.includes('already registered') || msg.includes('already exists')) {
+      if (msg.includes('already') || msg.includes('exists')) {
         friendlyError = 'An account with this email already exists. Try logging in instead!';
       } else if (msg.includes('Password should be at least')) {
         friendlyError = 'Your password is a bit too short. It needs to be at least 6 characters long.';
@@ -88,8 +94,8 @@ export default function SignupPage() {
   };
 
   return (
-    <div className="h-full overflow-y-auto bg-lavender-100">
-      <div className="mx-auto flex w-full max-w-[414px] flex-col bg-lavender-100 px-6 py-12">
+    <div className="h-screen overflow-hidden bg-lavender-100 flex items-center justify-center">
+      <div className="mx-auto flex w-full max-w-[414px] flex-col bg-lavender-100 px-6">
         <div className="mb-8">
           <Link href="/" className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white text-slate-600 shadow-sm transition-all hover:bg-slate-50">
             <ArrowLeft className="h-5 w-5" />
@@ -102,23 +108,6 @@ export default function SignupPage() {
           <p className="mt-2 text-sm text-slate-500">Join SheBloom to start your wellness journey</p>
         </div>
 
-        {showConfirmation ? (
-          <div className="flex flex-col items-center text-center py-8">
-            <div className="h-16 w-16 rounded-full bg-green-100 flex items-center justify-center mb-4">
-              <span className="text-3xl">✉️</span>
-            </div>
-            <h2 className="text-xl font-bold text-slate-800">Check your email!</h2>
-            <p className="mt-3 text-sm text-slate-500 leading-relaxed max-w-[300px]">
-              We've sent a confirmation link to <strong className="text-slate-700">{email}</strong>. Please click the link to verify your account, then come back and log in.
-            </p>
-            <Link
-              href="/login"
-              className="mt-6 inline-flex h-12 items-center justify-center rounded-full bg-bloom-gradient px-8 text-base font-semibold text-white shadow-bloom-btn transition-all hover:opacity-90 active:scale-[0.98]"
-            >
-              Go to Login
-            </Link>
-          </div>
-        ) : (
         <>
         {error && (
           <div className="mb-6 rounded-2xl bg-red-50 p-4 text-sm leading-relaxed text-red-600 border border-red-100 shadow-sm">
@@ -188,15 +177,12 @@ export default function SignupPage() {
           onClick={async () => {
             setError(null);
             try {
-              const { error } = await supabase.auth.signInWithOAuth({
-                provider: 'google',
-                options: {
-                  redirectTo: `${window.location.origin}/onboarding`,
-                },
-              });
-              if (error) throw error;
+              await googleSignIn();
+              router.push('/onboarding');
             } catch (err: any) {
-              setError(err.message || 'Google authentication failed');
+              if (err.message !== 'popup_closed_by_user') {
+                setError(err.message || 'Google sign-in failed');
+              }
             }
           }}
           className="mt-6 flex w-full items-center justify-center gap-3 rounded-full border-2 border-bloom-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition-all hover:bg-bloom-50 active:scale-[0.98]"
@@ -217,7 +203,6 @@ export default function SignupPage() {
           </Link>
         </p>
         </>
-        )}
       </div>
     </div>
   );
