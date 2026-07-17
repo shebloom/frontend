@@ -107,7 +107,7 @@ export default function HealthPage() {
     if (activeTab === 'Symptoms') {
       loadSymptoms();
     }
-    if (activeTab === 'Reports') {
+    if (activeTab === 'Reports' || activeTab === 'Overview') {
       loadReports();
     }
   }, [activeTab]);
@@ -326,21 +326,22 @@ export default function HealthPage() {
           <section className="px-5 pt-5">
             <h2 className="text-base font-semibold text-slate-800">Recent Records</h2>
             <div className="mt-3 space-y-3 rounded-2xl bg-white p-4 shadow-bloom-card border border-bloom-100/60">
-              {healthRecords.map((rec) => {
-                const Icon = recordIcons[rec.icon];
-                return (
+              {reports.length === 0 ? (
+                <p className="text-sm text-slate-400 text-center py-4">No records yet. Upload reports from the Reports tab.</p>
+              ) : (
+                reports.slice(0, 5).map((rec: any) => (
                   <div key={rec.id} className="flex items-center gap-3">
                     <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-bloom-50">
-                      <Icon className="h-5 w-5 text-bloom-600" />
+                      <FileText className="h-5 w-5 text-bloom-600" />
                     </div>
                     <div className="flex-1">
-                      <p className="text-sm font-medium text-slate-700">{rec.type}</p>
-                      <p className="text-xs text-slate-400">{rec.date}</p>
+                      <p className="text-sm font-medium text-slate-700">{rec.record_type || rec.file_name || 'Report'}</p>
+                      <p className="text-xs text-slate-400">{rec.record_date ? new Date(rec.record_date).toLocaleDateString() : ''}</p>
                     </div>
                     <ChevronRight className="h-5 w-5 text-slate-300" />
                   </div>
-                );
-              })}
+                ))
+              )}
             </div>
             <button
               onClick={() => setActiveTab('Reports')}
