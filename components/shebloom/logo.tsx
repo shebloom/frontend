@@ -7,6 +7,7 @@ interface BloomLogoProps {
   as?: 'h1' | 'h2' | 'h3' | 'span';
   layout?: 'vertical' | 'horizontal'; // kept for backwards compatibility but basically ignored for a single image
   showIcon?: boolean; // ignored for image
+  showText?: boolean; // ignored for image
 }
 
 const sizeMap = {
@@ -22,6 +23,7 @@ export function BloomLogo({
   as: Tag = 'span',
   layout = 'horizontal',
   showIcon = true,
+  showText = true,
 }: BloomLogoProps) {
   const width = sizeMap[size];
   const height = Math.round(width * 0.77); // The aspect ratio of the provided logo is approx 4:3
