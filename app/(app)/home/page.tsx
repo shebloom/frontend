@@ -116,7 +116,7 @@ export default function HomePage() {
                 src={
                   profile?.role === 'doctor' 
                     ? upcomingAppointment?.users?.avatar_url 
-                    : upcomingAppointment?.doctors?.users?.avatar_url || "/images/doctor_deepa.png"
+                    : upcomingAppointment?.doctors?.users?.avatar_url || "/images/dr_deepa_avatar.jpg"
                 }
                 alt="Avatar"
                 className="h-full w-full object-cover"

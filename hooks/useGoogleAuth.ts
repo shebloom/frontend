@@ -56,7 +56,7 @@ export function useGoogleAuth() {
    * Opens the Google sign-in popup and returns once the session is created.
    * Throws on error.
    */
-  const signIn = useCallback(async (): Promise<void> => {
+  const signIn = useCallback(async (isLogin: boolean = false): Promise<void> => {
     const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
     if (!clientId) {
       throw new Error('Google Client ID is not configured');
@@ -104,7 +104,7 @@ export function useGoogleAuth() {
     const res = await fetch(`${API_URL}/auth/google`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code }),
+      body: JSON.stringify({ code, isLogin }),
     });
 
     const data = await res.json();

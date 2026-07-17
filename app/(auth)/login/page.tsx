@@ -23,7 +23,7 @@ export default function LoginPage() {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       if (params.get('error') === 'no_user') {
-        setError("Hmm, there's no such user. Please sign up first!");
+        setError("You need to signup, no such user exists.");
       }
     }
   }, []);
@@ -46,7 +46,7 @@ export default function LoginPage() {
     } catch (err: any) {
       let friendlyError = 'Oops, something went wrong on our end. Please try again in a moment.';
       if (err.message?.includes('Invalid login credentials')) {
-        friendlyError = 'Hmm, we couldn\'t find an account with that email and password combination. Please try again.';
+        friendlyError = 'You need to signup, no such user exists.';
       } else if (err.message?.includes('Email not confirmed')) {
         friendlyError = 'Please check your email to confirm your account before logging in.';
       } else if (err.message) {
@@ -132,7 +132,7 @@ export default function LoginPage() {
           onClick={async () => {
             setError(null);
             try {
-              await googleSignIn();
+              await googleSignIn(true);
               router.push('/home');
             } catch (err: any) {
               // Don't show error if user just closed the popup

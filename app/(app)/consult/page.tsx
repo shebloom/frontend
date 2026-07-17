@@ -133,7 +133,7 @@ function DoctorListCard({ doctor }: { doctor: any }) {
       <div className="flex items-start gap-3">
         <div className="h-20 w-20 shrink-0 overflow-hidden rounded-2xl bg-bloom-100 ring-2 ring-white shadow-sm">
           <img 
-            src={doctor.users?.avatar_url || "/images/doctor_deepa.png"} 
+            src={doctor.users?.avatar_url || "/images/dr_deepa_avatar.jpg"} 
             alt={doctor.users?.full_name || "Doctor"} 
             className="h-full w-full object-cover" 
           />
