@@ -75,7 +75,7 @@ export default function OnboardingPage() {
   };
 
   return (
-    <div className="fixed inset-0 bg-white overflow-hidden flex items-center justify-center">
+    <div className="fixed inset-0 bg-[#E5D5F0] overflow-hidden flex items-center justify-center">
       
       {/* Desktop Container (Split 50/50 on PC) */}
       <div className="w-full h-full flex flex-col md:flex-row relative">
@@ -90,134 +90,181 @@ export default function OnboardingPage() {
           />
         </div>
 
-        {/* RIGHT SIDE */}
-        <div className="w-full md:w-1/2 h-full flex flex-col items-center justify-center p-6 bg-[#fcf7f9] overflow-y-auto">
-          <div className="w-full max-w-[420px] mx-auto py-8">
-            <div className="text-center mb-8 flex flex-col items-center">
-              <BloomLogo size="lg" layout="vertical" className="mb-3 scale-110" />
-              <h1 className="text-2xl font-black text-slate-800">Welcome to SheBloom</h1>
-              <p className="mt-1.5 text-sm text-slate-500 font-medium">How would you like to use the app?</p>
-            </div>
+        {/* RIGHT SIDE (Onboarding content) */}
+        <div className="w-full md:w-1/2 h-full flex flex-col items-center justify-center bg-[#FBE0E7] relative overflow-hidden">
+          
+          {!roleSelection ? (
+            /* Role Selection Screen - Matches the landing page UI pixel-by-pixel */
+            <div className="w-full h-full flex flex-col relative max-w-[450px] mx-auto bg-[#FBE0E7]">
+              
+              {/* Top Logo and Header */}
+              <div className="w-full pt-10 pb-4 flex flex-col items-center text-center px-6 relative z-20">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img 
+                  src="/images/logo_icon.png" 
+                  alt="SheBloom Logo" 
+                  className="w-12 h-12 object-contain animate-pulse" 
+                />
+                <span className="text-[10px] font-extrabold text-[#9d174d] uppercase tracking-widest mt-2">Welcome to</span>
+                <h2 className="text-2xl font-black text-[#5b21b6] mt-0.5 tracking-tight">SheBloom</h2>
+                <p className="text-[11px] font-bold text-slate-700 mt-1.5 max-w-[220px] leading-tight">
+                  How would you like to use the app?
+                </p>
+              </div>
 
-            {!roleSelection ? (
-              <div className="flex flex-col gap-4">
+              {/* Center Doctor Image with fade */}
+              <div className="relative w-full flex-1 flex flex-col justify-end min-h-0">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img 
+                  src="/images/dr_deepa_pink_cropped.png" 
+                  alt="Dr. Deepa" 
+                  className="w-full h-full object-cover object-top scale-105 origin-top"
+                  onError={(e) => {
+                    const target = e.target as HTMLImageElement;
+                    target.onerror = null;
+                    target.src = "/images/dr_deepa_avatar.jpg";
+                  }}
+                />
+                {/* White gradient fade to blend image into buttons section */}
+                <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-[#fdf6f8] via-[#fdf6f8]/85 to-transparent" />
+              </div>
+
+              {/* Bottom Buttons Section */}
+              <div className="w-full bg-[#fdf6f8] px-8 pb-12 pt-2 relative z-20 space-y-3">
                 <button
                   onClick={() => handlePatientSubmit()}
-                  className="flex items-center gap-4 p-5 rounded-2xl bg-white border-2 border-transparent shadow-[0_4px_20px_-10px_rgba(0,0,0,0.05)] hover:border-bloom-300 hover:shadow-bloom-card transition-all text-left"
+                  className="w-full h-14 bg-[#5b21b6] text-white font-bold rounded-full text-base shadow-[0_8px_20px_-6px_rgba(91,33,182,0.5)] transition-transform active:scale-95 flex items-center justify-center gap-2"
                 >
-                  <div className="w-12 h-12 rounded-full bg-bloom-100 flex items-center justify-center text-bloom-600 shrink-0">
-                    <User size={24} />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-slate-800 text-sm">I am a User</h3>
-                    <p className="text-[11px] text-slate-500 font-medium">Track health, consult doctors</p>
-                  </div>
+                  I am a User
                 </button>
-
                 <button
                   onClick={() => setRoleSelection('doctor')}
-                  className="flex items-center gap-4 p-5 rounded-2xl bg-white border-2 border-transparent shadow-[0_4px_20px_-10px_rgba(0,0,0,0.05)] hover:border-bloom-300 hover:shadow-bloom-card transition-all text-left"
+                  className="w-full h-14 bg-white border-2 border-[#5b21b6] text-[#5b21b6] font-bold rounded-full text-base transition-transform active:scale-95 flex items-center justify-center gap-2"
                 >
-                  <div className="w-12 h-12 rounded-full bg-bloom-100 flex items-center justify-center text-bloom-600 shrink-0">
-                    <Stethoscope size={24} />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-slate-800 text-sm">I am a Doctor</h3>
-                    <p className="text-[11px] text-slate-500 font-medium">Provide care to patients</p>
-                  </div>
+                  I am a Doctor
                 </button>
+                <p className="text-center text-[10px] text-slate-400 font-medium tracking-wide pt-1">
+                  Secure. Private. For You.
+                </p>
               </div>
-            ) : (
-              <form onSubmit={handleDoctorSubmit} className="flex flex-col gap-4 bg-white p-6 rounded-3xl shadow-[0_4px_20px_-10px_rgba(0,0,0,0.05)]">
-                <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-1">
-                  <h2 className="font-bold text-slate-800 text-sm">Doctor Details</h2>
-                  <button type="button" onClick={() => setRoleSelection(null)} className="text-[11px] font-bold text-bloom-600 bg-bloom-50 px-3 py-1 rounded-full hover:bg-bloom-100">Back</button>
+
+            </div>
+          ) : (
+            /* Doctor Details Form - Beautiful Card Layout on Pink Background */
+            <div className="w-full h-full max-w-[450px] mx-auto px-6 py-8 overflow-y-auto flex flex-col justify-center">
+              <div className="bg-white/95 backdrop-blur-md p-6 rounded-[32px] shadow-[0_20px_50px_rgba(91,33,182,0.1)] border border-white/50 w-full">
+                
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+                  <div className="flex items-center gap-2">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src="/images/logo_icon.png" alt="Logo" className="w-6 h-6 object-contain" />
+                    <h2 className="font-black text-slate-800 text-base tracking-tight">Doctor Verification</h2>
+                  </div>
+                  <button 
+                    type="button" 
+                    onClick={() => setRoleSelection(null)} 
+                    className="text-[11px] font-bold text-bloom-600 bg-bloom-50 px-3 py-1.5 rounded-full hover:bg-bloom-100 transition-colors"
+                  >
+                    Back
+                  </button>
                 </div>
                 
-                {error && <div className="text-[11px] font-semibold text-red-600 bg-red-50 p-3 rounded-xl border border-red-100">{error}</div>}
+                {error && <div className="text-[11px] font-semibold text-red-600 bg-red-50 p-3 rounded-xl border border-red-100 mb-4">{error}</div>}
 
-                <div>
-                  <label className="mb-1.5 block text-[10px] font-bold text-slate-500 uppercase tracking-wider">Specialty</label>
-                  <input type="text" required value={specialty} onChange={e => setSpecialty(e.target.value)} className="h-11 w-full rounded-xl border-0 bg-slate-50 px-3 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-bloom-300 transition-all font-medium" placeholder="e.g. OB/GYN" />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-[10px] font-bold text-slate-500 uppercase tracking-wider">Experience (Yrs)</label>
-                  <input type="number" required value={experience} onChange={e => setExperience(e.target.value)} className="h-11 w-full rounded-xl border-0 bg-slate-50 px-3 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-bloom-300 transition-all font-medium" placeholder="e.g. 10" />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-[10px] font-bold text-slate-500 uppercase tracking-wider">Contact Number</label>
-                  <input type="tel" required value={phone} onChange={e => setPhone(e.target.value)} className="h-11 w-full rounded-xl border-0 bg-slate-50 px-3 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-bloom-300 transition-all font-medium" placeholder="+91 98765 43210" />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-[10px] font-bold text-slate-500 uppercase tracking-wider">Fee (USD)</label>
-                  <input type="number" required value={fee} onChange={e => setFee(e.target.value)} className="h-11 w-full rounded-xl border-0 bg-slate-50 px-3 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-bloom-300 transition-all font-medium" placeholder="150" />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-[10px] font-bold text-slate-500 uppercase tracking-wider">License Number</label>
-                  <input type="text" required value={license} onChange={e => setLicense(e.target.value)} className="h-11 w-full rounded-xl border-0 bg-slate-50 px-3 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-bloom-300 transition-all font-medium" placeholder="Lic-12345" />
-                </div>
-                <div className="pt-2">
-                  <div className="mb-1.5 flex items-center justify-between">
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">ID / License Document</label>
+                <form onSubmit={handleDoctorSubmit} className="flex flex-col gap-3.5">
+                  <div>
+                    <label className="mb-1 block text-[10px] font-bold text-slate-500 uppercase tracking-wider">Specialty</label>
+                    <input type="text" required value={specialty} onChange={e => setSpecialty(e.target.value)} className="h-11 w-full rounded-xl border-0 bg-slate-50 px-3 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-bloom-300 transition-all font-medium" placeholder="e.g. OB/GYN" />
                   </div>
-                  <label className="relative flex flex-col items-center justify-center h-20 w-full rounded-2xl border-2 border-dashed border-slate-200 hover:border-bloom-300 hover:bg-slate-50 transition-all cursor-pointer bg-slate-50/50 p-4">
-                    <input 
-                      type="file" 
-                      required
-                      accept=".pdf,image/*"
-                      onChange={handleFileChange}
-                      className="sr-only"
-                    />
-                    {!selectedFile ? (
-                      <div className="flex flex-col items-center text-center">
-                        <span className="text-[11px] font-bold text-bloom-600">Click to Upload</span>
-                        <span className="text-[9px] text-slate-400 mt-0.5">PDF or Image (Max 5MB)</span>
-                      </div>
-                    ) : (
-                      <div className="w-full flex items-center gap-2 text-left">
-                        <div className="h-8 w-8 shrink-0 bg-bloom-100 rounded-xl flex items-center justify-center text-bloom-600 font-bold text-[9px]">
-                          {selectedFile.name.split('.').pop()?.toUpperCase()}
+                  
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="mb-1 block text-[10px] font-bold text-slate-500 uppercase tracking-wider">Experience (Yrs)</label>
+                      <input type="number" required value={experience} onChange={e => setExperience(e.target.value)} className="h-11 w-full rounded-xl border-0 bg-slate-50 px-3 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-bloom-300 transition-all font-medium" placeholder="e.g. 10" />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-[10px] font-bold text-slate-500 uppercase tracking-wider">Fee (USD)</label>
+                      <input type="number" required value={fee} onChange={e => setFee(e.target.value)} className="h-11 w-full rounded-xl border-0 bg-slate-50 px-3 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-bloom-300 transition-all font-medium" placeholder="150" />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-[10px] font-bold text-slate-500 uppercase tracking-wider">Contact Number</label>
+                    <input type="tel" required value={phone} onChange={e => setPhone(e.target.value)} className="h-11 w-full rounded-xl border-0 bg-slate-50 px-3 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-bloom-300 transition-all font-medium" placeholder="+91 98765 43210" />
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-[10px] font-bold text-slate-500 uppercase tracking-wider">License Number</label>
+                    <input type="text" required value={license} onChange={e => setLicense(e.target.value)} className="h-11 w-full rounded-xl border-0 bg-slate-50 px-3 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-bloom-300 transition-all font-medium" placeholder="Lic-12345" />
+                  </div>
+
+                  <div className="pt-1">
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">ID / License Document</label>
+                    <label className="relative flex flex-col items-center justify-center h-20 w-full rounded-2xl border-2 border-dashed border-slate-200 hover:border-bloom-300 hover:bg-slate-50 transition-all cursor-pointer bg-slate-50/50 p-4">
+                      <input 
+                        type="file" 
+                        required
+                        accept=".pdf,image/*"
+                        onChange={handleFileChange}
+                        className="sr-only"
+                      />
+                      {!selectedFile ? (
+                        <div className="flex flex-col items-center text-center">
+                          <span className="text-[11px] font-bold text-bloom-600">Click to Upload Document</span>
+                          <span className="text-[9px] text-slate-400 mt-0.5">PDF or Image (Max 5MB)</span>
                         </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-[10px] font-bold text-slate-700 truncate">{selectedFile.name}</p>
-                          <p className="text-[9px] text-slate-400">{(selectedFile.size / 1024 / 1024).toFixed(2)} MB</p>
+                      ) : (
+                        <div className="w-full flex items-center gap-2 text-left">
+                          <div className="h-8 w-8 shrink-0 bg-bloom-100 rounded-xl flex items-center justify-center text-bloom-600 font-bold text-[9px]">
+                            {selectedFile.name.split('.').pop()?.toUpperCase()}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-[10px] font-bold text-slate-700 truncate">{selectedFile.name}</p>
+                            <p className="text-[9px] text-slate-400">{(selectedFile.size / 1024 / 1024).toFixed(2)} MB</p>
+                          </div>
+                          <button 
+                            type="button" 
+                            onClick={(e) => {
+                              e.preventDefault();
+                              setSelectedFile(null);
+                            }}
+                            className="text-[9px] font-bold text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 px-2 py-1 rounded-lg"
+                          >
+                            Remove
+                          </button>
                         </div>
-                        <button 
-                          type="button" 
-                          onClick={(e) => {
-                            e.preventDefault();
-                            setSelectedFile(null);
-                          }}
-                          className="text-[9px] font-bold text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 px-2 py-1 rounded-lg"
-                        >
-                          Remove
-                        </button>
+                      )}
+                    </label>
+                    
+                    {isUploading && (
+                      <div className="mt-3 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                        <div className="flex justify-between text-[9px] font-bold text-slate-500 mb-1.5">
+                          <span>Uploading...</span>
+                          <span>{uploadProgress}%</span>
+                        </div>
+                        <div className="h-1.5 w-full bg-slate-200 rounded-full overflow-hidden">
+                          <div 
+                            className="h-full bg-bloom-600 rounded-full transition-all duration-300"
+                            style={{ width: `${uploadProgress}%` }}
+                          />
+                        </div>
                       </div>
                     )}
-                  </label>
-                  
-                  {isUploading && (
-                    <div className="mt-3 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                      <div className="flex justify-between text-[9px] font-bold text-slate-500 mb-1.5">
-                        <span>Uploading...</span>
-                        <span>{uploadProgress}%</span>
-                      </div>
-                      <div className="h-1.5 w-full bg-slate-200 rounded-full overflow-hidden">
-                        <div 
-                          className="h-full bg-bloom-600 rounded-full transition-all duration-300"
-                          style={{ width: `${uploadProgress}%` }}
-                        />
-                      </div>
-                    </div>
-                  )}
-                </div>
+                  </div>
 
-                <GradientButton type="submit" className="mt-4 h-12 text-[13px] shadow-[0_8px_20px_-6px_rgba(91,33,182,0.5)]" disabled={loading}>
-                  {loading ? 'Submitting...' : 'Submit Details'}
-                </GradientButton>
-              </form>
-            )}
-          </div>
+                  <button 
+                    type="submit" 
+                    className="w-full h-12 bg-[#5b21b6] text-white font-bold rounded-full text-sm mt-2 shadow-[0_8px_20px_-6px_rgba(91,33,182,0.5)] transition-transform active:scale-95"
+                    disabled={loading}
+                  >
+                    {loading ? 'Submitting Application...' : 'Submit for Verification'}
+                  </button>
+                </form>
+
+              </div>
+            </div>
+          )}
+
         </div>
 
       </div>
