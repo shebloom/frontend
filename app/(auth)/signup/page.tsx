@@ -7,6 +7,7 @@ import { BloomLogo, GradientButton } from '@/components/shebloom';
 import { ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import Link from 'next/link';
 
+import { API_URL } from '@/lib/api';
 import { useAuth } from '@/components/auth-provider';
 import { useGoogleAuth } from '@/hooks/useGoogleAuth';
 
@@ -50,7 +51,7 @@ export default function SignupPage() {
     try {
       // Step 1: Create the user via our backend (auto-confirms email)
       const registerRes = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api'}/auth/register`,
+        `${API_URL}/auth/register`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -94,7 +95,7 @@ export default function SignupPage() {
   };
 
   return (
-    <div className="h-screen overflow-hidden bg-lavender-100 flex items-center justify-center">
+    <div className="fixed inset-0 overflow-hidden bg-lavender-100 flex items-center justify-center">
       <div className="mx-auto flex w-full max-w-[414px] flex-col bg-lavender-100 px-6">
         <div className="mb-8">
           <Link href="/" className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white text-slate-600 shadow-sm transition-all hover:bg-slate-50">
