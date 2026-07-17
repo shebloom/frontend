@@ -40,16 +40,24 @@ export default function HomePage() {
     const base = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
     const fallbackName = user?.user_metadata?.full_name || (user?.email ? user.email.split('@')[0].replace(/[^a-zA-Z0-9]/g, ' ') : '');
     const rawName = profile?.full_name || fallbackName;
-    const name = rawName ? rawName.trim().split(/\s+/)[0] : '';
-    const capitalizedName = name ? name.charAt(0).toUpperCase() + name.slice(1) : '';
+    const parts = rawName ? rawName.trim().split(/\s+/) : [];
+    let name = parts.length > 0 ? parts[0] : '';
+    
+    // If name is "Dr." or "Dr", try to include the next word as well
+    if ((name.toLowerCase() === 'dr.' || name.toLowerCase() === 'dr') && parts.length > 1) {
+      name = name + ' ' + parts[1];
+    }
+
+    const capitalizedName = name ? name.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') : '';
     setGreeting(capitalizedName ? `${base}, ${capitalizedName} 👋` : base);
   }, [profile, user]);
 
   useEffect(() => {
     async function loadData() {
       try {
+        const endpoint = profile?.role === 'doctor' ? '/doctor-portal/appointments?upcoming=true' : '/appointments?upcoming=true';
         const [apptsRes, memRes] = await Promise.all([
-          apiFetch('/appointments?upcoming=true'),
+          apiFetch(endpoint),
           apiFetch('/membership')
         ]);
         if (apptsRes.appointments?.length > 0) {
@@ -93,35 +101,49 @@ export default function HomePage() {
         </button>
       </header>
 
-      {/* Upcoming Consultation */}
-      <section className="px-5 pt-5">
-        <div className="overflow-hidden rounded-3xl bg-bloom-gradient p-5 text-white shadow-bloom-btn">
-          <div className="flex items-center gap-4">
+      {/* Upcoming Appointment */}
+      <section className="px-5 pt-6 pb-2">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-bold text-slate-800">Next Consultation</h2>
+          <Link href="/consult" className="text-xs font-bold text-bloom-600 hover:text-bloom-700">See All</Link>
+        </div>
+        
+        <div className="rounded-3xl bg-bloom-gradient p-5 shadow-bloom-card text-white relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-white opacity-5 rounded-full -mr-10 -mt-10 blur-xl"></div>
+          <div className="flex items-start gap-4 relative z-10">
             <div className="h-16 w-16 shrink-0 overflow-hidden rounded-2xl border-2 border-white/20 bg-bloom-100/20">
               <img
-                src={upcomingAppointment?.doctors?.users?.avatar_url || "/images/doctor_deepa.png"}
-                alt="Doctor avatar"
+                src={
+                  profile?.role === 'doctor' 
+                    ? upcomingAppointment?.users?.avatar_url 
+                    : upcomingAppointment?.doctors?.users?.avatar_url || "/images/doctor_deepa.png"
+                }
+                alt="Avatar"
                 className="h-full w-full object-cover"
               />
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-[10px] font-semibold text-white/70 uppercase tracking-wider">Upcoming Consultation</p>
               <h3 className="truncate text-base font-bold mt-0.5">
-                {upcomingAppointment?.doctors?.users?.full_name || "Dr. Deepa Madhavan"}
+                {profile?.role === 'doctor'
+                  ? upcomingAppointment?.users?.full_name || "Patient"
+                  : upcomingAppointment?.doctors?.users?.full_name || "Dr. Deepa Madhavan"}
               </h3>
               <p className="truncate text-xs text-white/80 font-medium">
-                Gynecologist & IVF Specialist
+                {profile?.role === 'doctor'
+                  ? upcomingAppointment?.consultation_type || "Video Consultation"
+                  : "Gynecologist & IVF Specialist"}
               </p>
               <p className="text-[11px] text-white/75 mt-1 font-semibold">
                 {upcomingAppointment?.appointment_date 
                   ? `${new Date(upcomingAppointment.appointment_date).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })} - ${upcomingAppointment.slot_time}`
-                  : "20 May 2025 - 10:30 AM"}
+                  : "No upcoming appointments"}
               </p>
             </div>
           </div>
           <div className="mt-4 flex gap-2.5">
             <button
-              onClick={() => router.push(upcomingAppointment ? `/chat/${upcomingAppointment.doctor_id}` : '/chat')}
+              onClick={() => router.push(upcomingAppointment ? `/chat/${profile?.role === 'doctor' ? upcomingAppointment.patient_id : upcomingAppointment.doctor_id}` : '/chat')}
               className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-white/15 py-2.5 text-xs font-bold backdrop-blur-sm transition hover:bg-white/25"
             >
               <Video className="h-4 w-4" />
