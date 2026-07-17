@@ -30,6 +30,20 @@ export default function LandingPage() {
               alt="Onboarding" 
               className="w-full h-full object-contain pointer-events-none select-none"
             />
+            {/* Logo and Tagline Overlay at the top */}
+            <div className="absolute top-[8%] left-0 right-0 flex flex-col items-center text-center pointer-events-none px-6">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img 
+                src="/images/logo_icon.png" 
+                alt="SheBloom Logo" 
+                className="w-12 h-12 object-contain" 
+              />
+              <span className="text-[10px] font-extrabold text-[#9d174d] uppercase tracking-widest mt-2">Welcome to</span>
+              <h2 className="text-2xl font-black text-[#5b21b6] mt-0.5 tracking-tight">SheBloom</h2>
+              <p className="text-[11px] font-bold text-slate-700 mt-1.5 max-w-[200px] leading-tight">
+                Your Journey to Better Health Starts Here
+              </p>
+            </div>
             {/* Clickable zone for Create Account */}
             <button 
               onClick={() => router.push('/signup')}
