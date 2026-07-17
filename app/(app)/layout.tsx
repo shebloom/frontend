@@ -52,12 +52,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <div className="relative">
             <div className="absolute inset-0 rounded-full bg-bloom-200/60 animate-ping" style={{ animationDuration: '2s' }} />
             <div className="relative h-24 w-24 rounded-full bg-white shadow-bloom-card border border-bloom-100 flex items-center justify-center overflow-hidden">
-              <div className="relative w-16 h-12 overflow-hidden flex items-center justify-center">
+              <div className="relative w-full h-full flex items-center justify-center">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img 
-                  src="/images/logo.png" 
+                  src="/images/logo_icon.png" 
                   alt="SheBloom Butterfly" 
-                  className="w-24 max-w-none h-auto object-contain -translate-y-[10px]" 
+                  className="w-16 h-16 object-contain" 
                 />
               </div>
             </div>
