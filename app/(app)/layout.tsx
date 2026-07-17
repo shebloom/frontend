@@ -4,6 +4,7 @@ import { useAuth } from '@/components/auth-provider';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { BottomNav, BloomLogo } from '@/components/shebloom';
+import { User, Stethoscope, ShieldCheck } from 'lucide-react';
 
 const loadingMessages = [
   'Blooming into your wellness journey…',
@@ -81,11 +82,98 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex-1 flex flex-col h-full overflow-hidden relative bg-lavender-100 pb-20">
-      <main className="flex-1 overflow-y-auto scrollbar-hide">
-        {children}
-      </main>
-      <BottomNav className="fixed bottom-0 left-0 right-0 z-50" />
+    <div className="fixed inset-0 md:grid md:grid-cols-12 bg-lavender-100 overflow-hidden">
+      {/* Left side: desktop banner */}
+      <div className="hidden md:flex md:col-span-5 bg-gradient-to-b from-[#FFF5F5] to-[#FFEAEA] p-8 flex-col justify-between relative overflow-hidden h-full border-r border-bloom-100/30">
+        {/* Decorative petals / glow */}
+        <div className="absolute top-0 right-0 w-64 h-64 bg-bloom-100/30 rounded-full blur-3xl -mr-16 -mt-16"></div>
+        
+        <div className="relative z-10 space-y-8">
+          <div className="flex flex-col">
+            <span className="text-3xl font-extrabold bg-gradient-to-r from-bloom-600 to-petal-600 bg-clip-text text-transparent tracking-tight">SheBloom</span>
+            <span className="text-[10px] font-bold text-bloom-500 uppercase tracking-widest mt-0.5">Every Woman. Every Stage. Every Day.</span>
+          </div>
+
+          <div className="space-y-2">
+            <h2 className="text-2xl font-extrabold text-slate-800 leading-tight">Your Complete<br />Women's Health<br />Companion</h2>
+          </div>
+
+          {/* Bullet features */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-4">
+              <div className="h-10 w-10 rounded-full bg-bloom-100 flex items-center justify-center shrink-0">
+                <User className="h-5 w-5 text-bloom-600" />
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-slate-700">Expert Gynec Care</h4>
+                <p className="text-xs text-slate-400">Consult with top gynecologists & IVF specialists</p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-4">
+              <div className="h-10 w-10 rounded-full bg-petal-100 flex items-center justify-center shrink-0">
+                <Stethoscope className="h-5 w-5 text-petal-600" />
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-slate-700">Unlimited Support</h4>
+                <p className="text-xs text-slate-400">Chat anytime with our dedicated care team</p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-4">
+              <div className="h-10 w-10 rounded-full bg-green-100 flex items-center justify-center shrink-0">
+                <span className="text-sm">🧘</span>
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-slate-700">Wellness & Yoga</h4>
+                <p className="text-xs text-slate-400">Self-paced sessions for your mind and body</p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-4">
+              <div className="h-10 w-10 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
+                <span className="text-sm">📅</span>
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-slate-700">Track & Understand</h4>
+                <p className="text-xs text-slate-400">Track cycles, symptoms & more</p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-4">
+              <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
+                <ShieldCheck className="h-5 w-5 text-blue-600" />
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-slate-700">Privacy First</h4>
+                <p className="text-xs text-slate-400">Your data is safe, secure & confidential</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Bottom illustration */}
+        <div className="relative mt-auto pt-6 z-10 flex flex-col items-center">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img 
+            src="/images/woman_with_flowers.png" 
+            alt="Illustration" 
+            className="w-full max-w-[220px] object-contain drop-shadow-md"
+          />
+          <div className="text-center mt-3">
+            <p className="text-[10px] font-bold text-bloom-600 uppercase tracking-wider">Trusted by Thousands of Women Across GCC</p>
+            <div className="flex justify-center gap-0.5 mt-1 text-amber-400 text-sm">★★★★★ <span className="text-slate-500 font-bold text-[10px] ml-1">4.8</span></div>
+          </div>
+        </div>
+      </div>
+
+      {/* Right side: App contents */}
+      <div className="col-span-12 md:col-span-7 flex flex-col h-full overflow-hidden relative bg-lavender-100 pb-20">
+        <main className="flex-1 overflow-y-auto scrollbar-hide">
+          {children}
+        </main>
+        <BottomNav className="absolute bottom-0 left-0 right-0 z-50" />
+      </div>
     </div>
   );
 }
