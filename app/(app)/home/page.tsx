@@ -48,7 +48,7 @@ export default function HomePage() {
       name = name + ' ' + parts[1];
     }
 
-    const capitalizedName = name ? name.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') : '';
+    const capitalizedName = name ? name.split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') : '';
     setGreeting(capitalizedName ? `${base}, ${capitalizedName} 👋` : base);
   }, [profile, user]);
 
