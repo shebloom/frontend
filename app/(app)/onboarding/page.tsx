@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { BloomLogo, GradientButton } from '@/components/shebloom';
-import { User, Stethoscope } from 'lucide-react';
+import { User, Stethoscope, ShieldCheck } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 
 export default function OnboardingPage() {
