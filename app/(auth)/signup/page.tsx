@@ -95,8 +95,8 @@ export default function SignupPage() {
   };
 
   return (
-    <div className="fixed inset-0 overflow-hidden bg-lavender-100 flex items-center justify-center">
-      <div className="mx-auto flex w-full max-w-[414px] flex-col bg-lavender-100 px-6">
+    <div className="min-h-full py-12 flex items-center justify-center px-4">
+      <div className="mx-auto flex w-full max-w-[414px] flex-col">
         <div className="mb-8">
           <Link href="/" className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white text-slate-600 shadow-sm transition-all hover:bg-slate-50">
             <ArrowLeft className="h-5 w-5" />
