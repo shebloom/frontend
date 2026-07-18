@@ -11,6 +11,7 @@ export default function DoctorProfilePage() {
   const router = useRouter();
   const [doctor, setDoctor] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [hasBooking, setHasBooking] = useState(false);
 
   useEffect(() => {
     async function loadDoctor() {
@@ -24,6 +25,16 @@ export default function DoctorProfilePage() {
       }
     }
     loadDoctor();
+
+    // Check if user has an active booking with this doctor
+    apiFetch('/appointments')
+      .then(res => {
+        const doctorAppts = (res.appointments || []).filter(
+          (a: any) => a.doctor_id === params.id && ['pending', 'confirmed', 'rescheduled'].includes(a.status)
+        );
+        setHasBooking(doctorAppts.length > 0);
+      })
+      .catch(console.error);
   }, [params.id]);
 
   if (isLoading) {
@@ -49,12 +60,22 @@ export default function DoctorProfilePage() {
     <div className="pb-28">
       {/* Doctor hero image */}
       <div className="relative h-64 overflow-hidden">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={doctor.users?.avatar_url || "/images/dr_deepa_avatar_pink.jpg"}
-          alt={doctor.users?.full_name}
-          className="h-full w-full object-cover object-top"
-        />
+        {doctor.users?.avatar_url ? (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img
+            src={doctor.users.avatar_url}
+            alt={doctor.users?.full_name}
+            className="h-full w-full object-cover object-top"
+          />
+        ) : (
+          <div className="h-full w-full bg-gradient-to-br from-bloom-300 via-bloom-200 to-lavender-200 flex items-center justify-center pb-12">
+            <span className="text-5xl font-extrabold text-bloom-800 tracking-wider">
+              {doctor.users?.full_name 
+                ? doctor.users.full_name.replace(/^(Dr\.|Dr)\s+/i, '').split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase() 
+                : 'DR'}
+            </span>
+          </div>
+        )}
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
 
         {/* Back + Share buttons */}
@@ -124,20 +145,29 @@ export default function DoctorProfilePage() {
       </section>
 
       {/* Action buttons - fixed at bottom */}
-      <section className="px-5 pt-6">
+      <section className="px-5 pt-6 space-y-3">
         <button
           onClick={() => router.push(`/consult/${doctor.id}/book`)}
           className="flex h-14 w-full items-center justify-center gap-2 rounded-full bg-bloom-gradient text-base font-semibold text-white shadow-bloom-btn transition-all hover:brightness-105 active:scale-[0.98]"
         >
           Book Consultation
         </button>
-        <Link
-          href={`/chat/${doctor.id}`}
-          className="mt-3 flex h-12 w-full items-center justify-center gap-2 rounded-full border-2 border-bloom-200 bg-white text-sm font-semibold text-bloom-700 transition-all hover:bg-bloom-50 active:scale-[0.98]"
-        >
-          <MessageCircle className="h-5 w-5" />
-          Need to reschedule?
-        </Link>
+        {hasBooking && (
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              onClick={() => router.push(`/chat/${doctor.users?.id || doctor.user_id}?reschedule=true`)}
+              className="flex h-12 items-center justify-center gap-1.5 rounded-full border-2 border-bloom-200 bg-white text-xs font-semibold text-bloom-700 transition hover:bg-bloom-50"
+            >
+              <Calendar className="h-4 w-4" /> Reschedule
+            </button>
+            <button
+              onClick={() => router.push(`/chat/${doctor.users?.id || doctor.user_id}`)}
+              className="flex h-12 items-center justify-center gap-1.5 rounded-full bg-bloom-gradient text-xs font-semibold text-white shadow-sm hover:opacity-95"
+            >
+              <MessageCircle className="h-4 w-4" /> Chat Now
+            </button>
+          </div>
+        )}
       </section>
     </div>
   );

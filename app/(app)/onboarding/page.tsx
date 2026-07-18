@@ -23,12 +23,18 @@ export default function OnboardingPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [slotDuration, setSlotDuration] = useState('30');
 
-  const handlePatientSubmit = async () => {
-    // Patients don't need further setup, they are default.
-    router.push('/home');
-  };
-
+  // Contact verification state
+  const [showOtpScreen, setShowOtpScreen] = useState(false);
+  const [showPhoneScreen, setShowPhoneScreen] = useState(false);
+  const [otpCode, setOtpCode] = useState('');
+  const [otpError, setOtpError] = useState<string | null>(null);
+  const [otpSentPhone, setOtpSentPhone] = useState('');
   const [phone, setPhone] = useState('');
+
+  const handlePatientSubmit = async () => {
+    setRoleSelection('patient');
+    setShowPhoneScreen(true);
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -42,8 +48,17 @@ export default function OnboardingPage() {
       setError('Please upload a verification document.');
       return;
     }
-    setLoading(true);
+    if (phone.trim().length < 8) {
+      setError('Please enter a valid contact number.');
+      return;
+    }
     setError(null);
+    setOtpSentPhone(phone);
+    setShowOtpScreen(true);
+  };
+
+  const executeDoctorSubmit = async () => {
+    if (!selectedFile) return;
     setIsUploading(true);
     setUploadProgress(10);
 
@@ -75,6 +90,7 @@ export default function OnboardingPage() {
       setLoading(false);
       setIsUploading(false);
       setUploadProgress(0);
+      setShowOtpScreen(false);
       return;
     }
     setIsUploading(false);
@@ -90,31 +106,28 @@ export default function OnboardingPage() {
           category: 'Gynecologist',
           license_number: license,
           languages: ['English'],
-          phone, // Contact number
+          phone: otpSentPhone,
           document_urls: [documentUrl],
           slot_duration: parseInt(slotDuration, 10),
         })
       });
-      router.push('/home');
+      window.location.href = '/profile';
     } catch (err: any) {
       setError(err.message || 'Failed to submit application');
-    } finally {
       setLoading(false);
+      setShowOtpScreen(false);
     }
   };
 
   return (
     <div className="fixed inset-0 bg-[#E5D5F0] overflow-hidden flex items-center justify-center">
-      
       {/* Desktop Container (Split 50/50 on PC) */}
       <div className="w-full h-full flex flex-col md:flex-row relative">
-        
         {/* LEFT SIDE (Hidden on mobile) */}
         <AuthSidebar className="md:w-[45%]" />
 
         {/* RIGHT SIDE (Onboarding content) */}
         <div className="w-full md:w-[55%] h-full flex flex-col items-center justify-center bg-[#FBE0E7] relative overflow-hidden">
-          
           {/* Subtle watermark background of the woman with flowers */}
           <div className="absolute inset-0 z-0 pointer-events-none opacity-[0.08] select-none flex items-center justify-center overflow-hidden">
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -125,67 +138,147 @@ export default function OnboardingPage() {
             />
           </div>
 
-          {!roleSelection ? (
-            /* Role Selection Screen - Matches the landing page UI pixel-by-pixel */
-            <div className="w-full h-full flex flex-col relative max-w-[500px] mx-auto bg-[#FBE0E7]">
-              
-              {/* Top Logo and Header */}
-              <div className="w-full pt-10 pb-4 flex flex-col items-center text-center px-6 relative z-20">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img 
-                  src="/images/logo_icon.png" 
-                  alt="SheBloom Logo" 
-                  className="w-12 h-12 object-contain animate-pulse" 
-                />
-                <span className="text-[10px] font-extrabold text-[#9d174d] uppercase tracking-widest mt-2.5">Welcome to</span>
-                <h2 className="text-2xl font-black text-[#5b21b6] mt-0.5 tracking-tight font-playfair">SheBloom</h2>
-                <p className="text-[11px] font-extrabold text-slate-600 mt-1 max-w-[200px] leading-tight font-sans">
-                  How would you like to use the app?
-                </p>
-              </div>
-
-              {/* Center Doctor Image with fade */}
-              <div className="relative w-full flex-1 flex flex-col justify-end min-h-0">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img 
-                  src="/images/dr_deepa_pink_cropped.png" 
-                  alt="Dr. Deepa" 
-                  className="w-full h-full object-cover object-top"
-                  onError={(e) => {
-                    const target = e.target as HTMLImageElement;
-                    target.onerror = null;
-                    target.src = "/images/dr_deepa_avatar.jpg";
-                  }}
-                />
-                {/* White gradient fade to blend image into buttons section */}
-                <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-[#fdf6f8] via-[#fdf6f8]/85 to-transparent" />
-              </div>
-
-              {/* Bottom Buttons Section */}
-              <div className="w-full bg-[#fdf6f8] px-8 pb-12 pt-2 relative z-20 space-y-3">
-                <button
-                  onClick={() => handlePatientSubmit()}
-                  className="w-full h-14 bg-[#5b21b6] text-white font-extrabold rounded-full text-[14px] md:text-[15px] shadow-[0_8px_20px_-6px_rgba(91,33,182,0.5)] transition-transform active:scale-[0.97] flex items-center justify-center gap-2"
-                >
-                  I am a User
-                </button>
-                <button
-                  onClick={() => setRoleSelection('doctor')}
-                  className="w-full h-14 bg-white border-2 border-[#5b21b6] text-[#5b21b6] font-extrabold rounded-full text-[14px] md:text-[15px] transition-transform active:scale-[0.97] flex items-center justify-center gap-2 shadow-sm"
-                >
-                  I am a Doctor
-                </button>
-                <p className="text-center text-[10px] text-slate-400 font-bold tracking-wide pt-1">
-                  Secure. Private. For You.
-                </p>
-              </div>
-
-            </div>
-          ) : (
-            /* Doctor Details Form - Beautiful Card Layout on Pink Background */
-            <div className="w-full h-full max-w-[450px] mx-auto px-6 py-8 overflow-y-auto flex flex-col justify-center">
-              <div className="bg-white/95 backdrop-blur-md p-6 rounded-[32px] shadow-[0_20px_50px_rgba(91,33,182,0.1)] border border-white/50 w-full">
+          {showOtpScreen ? (
+            /* OTP Verification Screen */
+            <div className="w-full h-full max-w-[450px] mx-auto px-6 py-8 overflow-y-auto flex flex-col justify-center relative z-20">
+              <div className="bg-white/95 backdrop-blur-md p-6 rounded-[32px] shadow-[0_20px_50px_rgba(91,33,182,0.1)] border border-white/50 w-full space-y-5">
+                <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src="/images/logo_icon.png" alt="Logo" className="w-6 h-6 object-contain" />
+                  <h2 className="font-black text-slate-800 text-base tracking-tight font-playfair">Verify Contact Number</h2>
+                </div>
                 
+                <div className="text-center">
+                  <p className="text-xs font-semibold text-slate-500">We've sent a simulated 4-digit verification code to <span className="font-bold text-slate-800">{otpSentPhone}</span>.</p>
+                  <p className="text-[10px] text-bloom-600 font-extrabold mt-1.5 bg-bloom-50/70 py-1.5 px-3 rounded-full inline-block">Use code: <span className="text-slate-800">1234</span> for testing</p>
+                </div>
+
+                {otpError && <div className="text-[11px] font-semibold text-red-600 bg-red-50 p-3 rounded-xl border border-red-100 text-center">{otpError}</div>}
+
+                <div className="space-y-4">
+                  <div className="flex flex-col items-center">
+                    <label className="mb-1 block text-[10px] font-bold text-slate-500 uppercase tracking-wider text-center">4-Digit Code</label>
+                    <input 
+                      type="text" 
+                      maxLength={4}
+                      value={otpCode} 
+                      onChange={e => setOtpCode(e.target.value.replace(/[^0-9]/g, ''))} 
+                      className="h-12 w-28 text-center text-lg tracking-[8px] font-black rounded-2xl border-0 bg-slate-50 ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-bloom-300 block focus:outline-none" 
+                      placeholder="••••" 
+                    />
+                  </div>
+
+                  <button 
+                    onClick={async () => {
+                      if (otpCode !== '1234') {
+                        setOtpError('Invalid verification code. Please enter 1234.');
+                        return;
+                      }
+                      setOtpError(null);
+                      setLoading(true);
+                      
+                      try {
+                        if (roleSelection === 'patient') {
+                          // Update profile with phone
+                          await apiFetch('/auth/me', {
+                            method: 'PATCH',
+                            body: JSON.stringify({ phone: otpSentPhone }),
+                          });
+                          router.push('/home');
+                        } else {
+                          // Doctor verified phone, execute application submission
+                          await executeDoctorSubmit();
+                        }
+                      } catch (err: any) {
+                        setOtpError(err.message || 'Failed to complete onboarding. Please try again.');
+                        setLoading(false);
+                      }
+                    }}
+                    disabled={otpCode.length !== 4 || loading}
+                    className="w-full h-12 bg-[#5b21b6] text-white font-bold rounded-full text-sm shadow-[0_8px_20px_-6px_rgba(91,33,182,0.5)] transition-transform active:scale-95 disabled:opacity-50 flex items-center justify-center"
+                  >
+                    {loading ? 'Confirming...' : 'Confirm & Proceed'}
+                  </button>
+                  
+                  <button 
+                    type="button" 
+                    onClick={() => {
+                      setShowOtpScreen(false);
+                      setOtpCode('');
+                      setOtpError(null);
+                      if (roleSelection === 'patient') {
+                        setShowPhoneScreen(true);
+                      }
+                    }} 
+                    className="w-full text-center text-xs font-bold text-slate-400 hover:text-slate-600"
+                  >
+                    Back to Edit Number
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : showPhoneScreen ? (
+            /* Patient Phone Screen */
+            <div className="w-full h-full max-w-[450px] mx-auto px-6 py-8 overflow-y-auto flex flex-col justify-center relative z-20">
+              <div className="bg-white/95 backdrop-blur-md p-6 rounded-[32px] shadow-[0_20px_50px_rgba(91,33,182,0.1)] border border-white/50 w-full space-y-5">
+                <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src="/images/logo_icon.png" alt="Logo" className="w-6 h-6 object-contain" />
+                  <h2 className="font-black text-slate-800 text-base tracking-tight font-playfair">Contact Verification</h2>
+                </div>
+                
+                <div className="text-center py-2">
+                  <p className="text-sm font-semibold text-slate-600">Please enter your phone number to secure your profile and streamline bookings.</p>
+                </div>
+
+                {error && <div className="text-[11px] font-semibold text-red-600 bg-red-50 p-3 rounded-xl border border-red-100 text-center">{error}</div>}
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="mb-1 block text-[10px] font-bold text-slate-500 uppercase tracking-wider">Phone Number</label>
+                    <input 
+                      type="tel" 
+                      required 
+                      value={phone} 
+                      onChange={e => setPhone(e.target.value)} 
+                      className="h-12 w-full rounded-2xl border-0 bg-slate-50 px-4 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-bloom-300 font-medium" 
+                      placeholder="+91 98765 43210" 
+                    />
+                  </div>
+
+                  <button 
+                    onClick={() => {
+                      if (phone.trim().length < 8) {
+                        setError('Please enter a valid contact number.');
+                        return;
+                      }
+                      setError(null);
+                      setOtpSentPhone(phone);
+                      setShowPhoneScreen(false);
+                      setShowOtpScreen(true);
+                    }}
+                    className="w-full h-12 bg-[#5b21b6] text-white font-bold rounded-full text-sm shadow-[0_8px_20px_-6px_rgba(91,33,182,0.5)] transition-transform active:scale-95 flex items-center justify-center"
+                  >
+                    Send Verification Code
+                  </button>
+                  
+                  <button 
+                    type="button" 
+                    onClick={() => {
+                      setRoleSelection(null);
+                      setShowPhoneScreen(false);
+                    }} 
+                    className="w-full text-center text-xs font-bold text-slate-400 hover:text-slate-600"
+                  >
+                    Change Role
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : roleSelection === 'doctor' ? (
+            /* Doctor Details Form - Beautiful Card Layout on Pink Background */
+            <div className="w-full h-full max-w-[450px] mx-auto px-6 py-8 overflow-y-auto flex flex-col justify-center relative z-20">
+              <div className="bg-white/95 backdrop-blur-md p-6 rounded-[32px] shadow-[0_20px_50px_rgba(91,33,182,0.1)] border border-white/50 w-full">
                 <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
                   <div className="flex items-center gap-2">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -306,13 +399,64 @@ export default function OnboardingPage() {
                     {loading ? 'Submitting Application...' : 'Submit for Verification'}
                   </button>
                 </form>
+              </div>
+            </div>
+          ) : (
+            /* Role Selection Screen - Matches the landing page UI pixel-by-pixel */
+            <div className="w-full h-full flex flex-col relative max-w-[500px] mx-auto bg-[#FBE0E7]">
+              {/* Top Logo and Header */}
+              <div className="w-full pt-10 pb-4 flex flex-col items-center text-center px-6 relative z-20">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img 
+                  src="/images/logo_icon.png" 
+                  alt="SheBloom Logo" 
+                  className="w-12 h-12 object-contain animate-pulse" 
+                />
+                <span className="text-[10px] font-extrabold text-[#9d174d] uppercase tracking-widest mt-2.5">Welcome to</span>
+                <h2 className="text-2xl font-black text-[#5b21b6] mt-0.5 tracking-tight font-playfair">SheBloom</h2>
+                <p className="text-[11px] font-extrabold text-slate-600 mt-1 max-w-[200px] leading-tight font-sans">
+                  How would you like to use the app?
+                </p>
+              </div>
 
+              {/* Center Doctor Image with fade */}
+              <div className="relative w-full flex-1 flex flex-col justify-end min-h-0">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img 
+                  src="/images/dr_deepa_pink_cropped.png" 
+                  alt="Dr. Deepa" 
+                  className="w-full h-full object-cover object-top"
+                  onError={(e) => {
+                    const target = e.target as HTMLImageElement;
+                    target.onerror = null;
+                    target.src = "/images/dr_deepa_avatar.jpg";
+                  }}
+                />
+                {/* White gradient fade to blend image into buttons section */}
+                <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-[#fdf6f8] via-[#fdf6f8]/85 to-transparent" />
+              </div>
+
+              {/* Bottom Buttons Section */}
+              <div className="w-full bg-[#fdf6f8] px-8 pb-12 pt-2 relative z-20 space-y-3">
+                <button
+                  onClick={() => handlePatientSubmit()}
+                  className="w-full h-14 bg-[#5b21b6] text-white font-extrabold rounded-full text-[14px] md:text-[15px] shadow-[0_8px_20px_-6px_rgba(91,33,182,0.5)] transition-transform active:scale-[0.97] flex items-center justify-center gap-2"
+                >
+                  I am a User
+                </button>
+                <button
+                  onClick={() => setRoleSelection('doctor')}
+                  className="w-full h-14 bg-white border-2 border-[#5b21b6] text-[#5b21b6] font-extrabold rounded-full text-[14px] md:text-[15px] transition-transform active:scale-[0.97] flex items-center justify-center gap-2 shadow-sm"
+                >
+                  I am a Doctor
+                </button>
+                <p className="text-center text-[10px] text-slate-400 font-bold tracking-wide pt-1">
+                  Secure. Private. For You.
+                </p>
               </div>
             </div>
           )}
-
         </div>
-
       </div>
     </div>
   );

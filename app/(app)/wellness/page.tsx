@@ -24,7 +24,12 @@ export default function WellnessPage() {
       try {
         const data = await apiFetch('/wellness/sessions');
         if (data.sessions && data.sessions.length > 0) {
-          setSessions(data.sessions);
+          const mapped = data.sessions.map((s: any) => ({
+            ...s,
+            thumbnailUrl: s.thumbnailUrl || s.thumbnail_url,
+            scheduledAt: s.scheduledAt || (s.scheduled_at ? new Date(s.scheduled_at).toLocaleString('en-US', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : null),
+          }));
+          setSessions(mapped);
         } else {
           setSessions(fallbackSessions);
         }

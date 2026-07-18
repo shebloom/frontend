@@ -1,7 +1,7 @@
 'use client';
 
 import { useAuth } from '@/components/auth-provider';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { BottomNav, BloomLogo, AuthSidebar } from '@/components/shebloom';
 
@@ -76,6 +76,19 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     return null;
   }
 
+  const pathname = usePathname();
+  const showBottomNav = 
+    pathname === '/home' ||
+    pathname === '/consult' ||
+    pathname === '/programs' ||
+    pathname === '/wellness' ||
+    pathname === '/profile' ||
+    pathname === '/admin-panel' ||
+    pathname === '/admin-panel/users' ||
+    pathname === '/admin-panel/content' ||
+    pathname === '/admin-panel/analytics' ||
+    pathname === '/community';
+
   return (
     <div className="fixed inset-0 bg-white overflow-hidden flex items-center justify-center">
       
@@ -86,11 +99,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <AuthSidebar className="md:w-1/2" />
 
         {/* Right side: Mobile view & Desktop split (50%) app view */}
-        <div className="w-full md:w-1/2 h-full flex flex-col overflow-hidden relative bg-white pb-20">
+        <div className={`w-full md:w-1/2 h-full flex flex-col overflow-hidden relative bg-white ${showBottomNav ? 'pb-20' : ''}`}>
           <main className="flex-1 overflow-y-auto scrollbar-hide">
             {children}
           </main>
-          <BottomNav className="absolute bottom-0 left-0 right-0 z-50" />
+          {showBottomNav && <BottomNav className="absolute bottom-0 left-0 right-0 z-50" />}
         </div>
 
       </div>

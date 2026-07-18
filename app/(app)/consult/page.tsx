@@ -118,12 +118,22 @@ function DoctorListCard({ doctor }: { doctor: any }) {
     <div className="rounded-3xl bg-white shadow-bloom-card border border-bloom-100/50 overflow-hidden hover:border-bloom-200 transition-colors">
       {/* Doctor image area - full width */}
       <div className="relative h-40 overflow-hidden">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img 
-          src={doctor.users?.avatar_url || "/images/dr_deepa_avatar.jpg"} 
-          alt={doctor.users?.full_name || "Doctor"} 
-          className="h-full w-full object-cover object-top" 
-        />
+        {doctor.users?.avatar_url ? (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img 
+            src={doctor.users.avatar_url} 
+            alt={doctor.users.full_name || "Doctor"} 
+            className="h-full w-full object-cover object-top" 
+          />
+        ) : (
+          <div className="h-full w-full bg-gradient-to-br from-bloom-300 via-bloom-200 to-lavender-200 flex items-center justify-center pb-8">
+            <span className="text-3xl font-extrabold text-bloom-800 tracking-wider">
+              {doctor.users?.full_name 
+                ? doctor.users.full_name.replace(/^(Dr\.|Dr)\s+/i, '').split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase() 
+                : 'DR'}
+            </span>
+          </div>
+        )}
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
         <div className="absolute bottom-0 left-0 p-4 w-full">
           <h3 className="text-base font-bold text-white">{doctor.users?.full_name}</h3>

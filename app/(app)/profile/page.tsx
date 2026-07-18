@@ -61,6 +61,28 @@ export default function ProfilePage() {
   const [appointments, setAppointments] = useState<any[]>([]);
   const [loadingAppointments, setLoadingAppointments] = useState(true);
 
+  // Doctor Analytics State
+  const [analyticsRange, setAnalyticsRange] = useState<'week' | '2 weeks' | 'month' | '4 months'>('month');
+  const [analyticsData, setAnalyticsData] = useState<any>({
+    total_completed_all_time: 0,
+    total_completed_in_range: 0,
+    unique_patients_in_range: 0,
+    chart_data: []
+  });
+  const [loadingAnalytics, setLoadingAnalytics] = useState(false);
+
+  useEffect(() => {
+    if (profile?.role === 'doctor') {
+      setLoadingAnalytics(true);
+      apiFetch(`/doctor-portal/analytics?range=${encodeURIComponent(analyticsRange)}`)
+        .then(res => {
+          setAnalyticsData(res);
+        })
+        .catch(err => console.error("Error fetching analytics", err))
+        .finally(() => setLoadingAnalytics(false));
+    }
+  }, [profile, analyticsRange]);
+
   useEffect(() => {
     async function loadHistory() {
       try {
@@ -286,7 +308,7 @@ export default function ProfilePage() {
                     <Clock className="h-4 w-4 text-amber-600" />
                   </div>
                   <div className="flex-1">
-                    <p className="text-sm font-semibold text-amber-800">Application Pending</p>
+                    <p className="text-sm font-semibold text-amber-800">Profile under verification</p>
                     {profile.rejection_count > 0 ? (
                       <p className="text-xs text-amber-600/80">Under verification. {3 - profile.rejection_count} attempts remaining.</p>
                     ) : (
@@ -426,6 +448,107 @@ export default function ProfilePage() {
                 <MetricCard icon={Droplets} label="Blood Group" value={profile?.blood_group || '--'} />
               </div>
             )}
+          </div>
+        )}
+
+        {/* Doctor Analytics */}
+        {profile?.role === 'doctor' && (
+          <div className="rounded-3xl bg-white p-5 shadow-sm border border-bloom-100 space-y-4">
+            <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Consultation Analytics</p>
+            
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-bloom-50 rounded-2xl p-4 border border-bloom-100">
+                <p className="text-2xl font-black text-bloom-700">{analyticsData.total_completed_all_time}</p>
+                <p className="text-[10px] text-slate-500 font-semibold mt-0.5">Completed (All Time)</p>
+              </div>
+              <div className="bg-petal-50 rounded-2xl p-4 border border-petal-100">
+                <p className="text-2xl font-black text-petal-700">{analyticsData.unique_patients_in_range}</p>
+                <p className="text-[10px] text-slate-500 font-semibold mt-0.5">Unique Patients (In Range)</p>
+              </div>
+            </div>
+
+            {/* Range Selector */}
+            <div className="flex bg-slate-100 rounded-xl p-1 justify-between">
+              {(['week', '2 weeks', 'month', '4 months'] as const).map((r) => (
+                <button
+                  key={r}
+                  type="button"
+                  onClick={() => setAnalyticsRange(r)}
+                  className={cn(
+                    "flex-1 text-[10px] font-bold py-1.5 rounded-lg capitalize transition",
+                    analyticsRange === r
+                      ? "bg-white text-bloom-700 shadow-sm"
+                      : "text-slate-500 hover:text-slate-700"
+                  )}
+                >
+                  {r === 'week' ? '1 W' : r === '2 weeks' ? '2 W' : r === 'month' ? '1 M' : '4 M'}
+                </button>
+              ))}
+            </div>
+
+            {/* SVG Chart */}
+            <div className="pt-2">
+              {loadingAnalytics ? (
+                <div className="h-40 flex items-center justify-center text-xs text-slate-400 font-semibold">
+                  Loading chart...
+                </div>
+              ) : analyticsData.chart_data?.length > 0 ? (
+                <div>
+                  {/* Legend */}
+                  <div className="flex gap-4 justify-end text-[9px] font-bold mb-3">
+                    <div className="flex items-center gap-1">
+                      <span className="h-2.5 w-2.5 rounded-sm bg-bloom-600"></span>
+                      <span className="text-slate-500 text-[8px]">Consultations</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="h-2.5 w-2.5 rounded-sm bg-petal-500"></span>
+                      <span className="text-slate-500 text-[8px]">Patients</span>
+                    </div>
+                  </div>
+
+                  {/* SVG container */}
+                  <div className="relative w-full h-40 flex items-end justify-between border-b border-slate-200 pb-1 px-2">
+                    {(() => {
+                      const chartPoints = analyticsData.chart_data;
+                      const maxVal = Math.max(...chartPoints.map((p: any) => Math.max(p.consultations, p.patients)), 1);
+                      return chartPoints.map((p: any, idx: number) => {
+                        const hCons = Math.max(4, (p.consultations / maxVal) * 110); // max height 110px
+                        const hPts = Math.max(4, (p.patients / maxVal) * 110);
+                        return (
+                          <div key={idx} className="flex-1 flex flex-col items-center group relative min-w-0">
+                            {/* Hover tooltip */}
+                            <div className="absolute bottom-full mb-1 bg-slate-800 text-white text-[8px] font-bold px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition pointer-events-none z-10 whitespace-nowrap shadow">
+                              {p.label}: {p.consultations} appts, {p.patients} patients
+                            </div>
+                            
+                            {/* Bar pair */}
+                            <div className="flex items-end gap-0.5 justify-center w-full">
+                              <div 
+                                className="w-1.5 rounded-t-sm bg-bloom-600 group-hover:brightness-105 transition-all duration-300"
+                                style={{ height: `${hCons}px` }}
+                              />
+                              <div 
+                                className="w-1.5 rounded-t-sm bg-petal-500 group-hover:brightness-105 transition-all duration-300"
+                                style={{ height: `${hPts}px` }}
+                              />
+                            </div>
+
+                            {/* Label */}
+                            <span className="text-[7px] text-slate-400 mt-1.5 truncate max-w-[28px] font-medium leading-none">
+                              {p.label}
+                            </span>
+                          </div>
+                        );
+                      });
+                    })()}
+                  </div>
+                </div>
+              ) : (
+                <div className="h-40 flex items-center justify-center text-xs text-slate-400 bg-slate-50 rounded-2xl border border-slate-100 font-medium">
+                  No consultation data available.
+                </div>
+              )}
+            </div>
           </div>
         )}
 

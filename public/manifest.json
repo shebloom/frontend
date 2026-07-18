@@ -1,0 +1,21 @@
+{
+  "name": "SheBloom",
+  "short_name": "SheBloom",
+  "description": "SheBloom - Women's Health & Wellness App",
+  "start_url": "/home",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#7c3aed",
+  "icons": [
+    {
+      "src": "/images/logo_icon.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/images/logo.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

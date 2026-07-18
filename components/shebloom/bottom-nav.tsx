@@ -22,11 +22,21 @@ const adminNav = [
   { id: 'profile',   label: 'Profile',   icon: User,            href: '/profile' },
 ];
 
+const doctorNav = [
+  { id: 'home',      label: 'Home',      icon: Home,            href: '/home' },
+  { id: 'profile',   label: 'Profile',   icon: User,            href: '/profile' },
+];
+
 export function BottomNav({ className }: { className?: string }) {
   const pathname = usePathname();
   const { profile } = useAuth();
 
-  const navItems = profile?.role === 'admin' ? adminNav : patientNav;
+  const navItems = 
+    profile?.role === 'admin' 
+      ? adminNav 
+      : profile?.role === 'doctor'
+      ? doctorNav
+      : patientNav;
 
   return (
     <nav
