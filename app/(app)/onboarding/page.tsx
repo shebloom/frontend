@@ -81,21 +81,24 @@ export default function OnboardingPage() {
       <div className="w-full h-full flex flex-col md:flex-row relative">
         
         {/* LEFT SIDE (Hidden on mobile) */}
-        <div className="hidden md:block md:w-1/2 h-full relative bg-[#F7F4FB] shrink-0">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img 
-            src="/images/left_banner_full.jpg" 
-            alt="SheBloom Features" 
-            className="w-full h-full object-cover"
-          />
-        </div>
+        <AuthSidebar className="md:w-[45%]" />
 
         {/* RIGHT SIDE (Onboarding content) */}
-        <div className="w-full md:w-1/2 h-full flex flex-col items-center justify-center bg-[#FBE0E7] relative overflow-hidden">
+        <div className="w-full md:w-[55%] h-full flex flex-col items-center justify-center bg-[#FBE0E7] relative overflow-hidden">
           
+          {/* Subtle watermark background of the woman with flowers */}
+          <div className="absolute inset-0 z-0 pointer-events-none opacity-[0.08] select-none flex items-center justify-center overflow-hidden">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img 
+              src="/images/woman_with_flowers.png" 
+              alt="Background pattern" 
+              className="w-full h-full object-cover scale-125"
+            />
+          </div>
+
           {!roleSelection ? (
             /* Role Selection Screen - Matches the landing page UI pixel-by-pixel */
-            <div className="w-full h-full flex flex-col relative max-w-[450px] mx-auto bg-[#FBE0E7]">
+            <div className="w-full h-full flex flex-col relative max-w-[500px] mx-auto bg-[#FBE0E7]">
               
               {/* Top Logo and Header */}
               <div className="w-full pt-10 pb-4 flex flex-col items-center text-center px-6 relative z-20">
@@ -105,20 +108,27 @@ export default function OnboardingPage() {
                   alt="SheBloom Logo" 
                   className="w-12 h-12 object-contain animate-pulse" 
                 />
-                <span className="text-[10px] font-extrabold text-[#9d174d] uppercase tracking-widest mt-2">Welcome to</span>
-                <h2 className="text-2xl font-black text-[#5b21b6] mt-0.5 tracking-tight">SheBloom</h2>
-                <p className="text-[11px] font-bold text-slate-700 mt-1.5 max-w-[220px] leading-tight">
+                <span className="text-[10px] font-extrabold text-[#9d174d] uppercase tracking-widest mt-2.5">Welcome to</span>
+                <h2 className="text-2xl font-black text-[#5b21b6] mt-0.5 tracking-tight font-playfair">SheBloom</h2>
+                <p className="text-[11px] font-extrabold text-slate-600 mt-1 max-w-[200px] leading-tight font-sans">
                   How would you like to use the app?
                 </p>
               </div>
 
               {/* Center Doctor Image with fade */}
               <div className="relative w-full flex-1 flex flex-col justify-end min-h-0">
+                <style dangerouslySetInnerHTML={{__html: `
+                  .dr-deepa-img {
+                    height: 100% !important;
+                    object-fit: cover !important;
+                    width: 100% !important;
+                  }
+                `}} />
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img 
                   src="/images/dr_deepa_pink_cropped.png" 
                   alt="Dr. Deepa" 
-                  className="w-full h-full object-cover object-top scale-105 origin-top"
+                  className="dr-deepa-img object-top w-full"
                   onError={(e) => {
                     const target = e.target as HTMLImageElement;
                     target.onerror = null;
@@ -133,17 +143,17 @@ export default function OnboardingPage() {
               <div className="w-full bg-[#fdf6f8] px-8 pb-12 pt-2 relative z-20 space-y-3">
                 <button
                   onClick={() => handlePatientSubmit()}
-                  className="w-full h-14 bg-[#5b21b6] text-white font-bold rounded-full text-base shadow-[0_8px_20px_-6px_rgba(91,33,182,0.5)] transition-transform active:scale-95 flex items-center justify-center gap-2"
+                  className="w-full h-14 bg-[#5b21b6] text-white font-extrabold rounded-full text-[14px] md:text-[15px] shadow-[0_8px_20px_-6px_rgba(91,33,182,0.5)] transition-transform active:scale-[0.97] flex items-center justify-center gap-2"
                 >
                   I am a User
                 </button>
                 <button
                   onClick={() => setRoleSelection('doctor')}
-                  className="w-full h-14 bg-white border-2 border-[#5b21b6] text-[#5b21b6] font-bold rounded-full text-base transition-transform active:scale-95 flex items-center justify-center gap-2"
+                  className="w-full h-14 bg-white border-2 border-[#5b21b6] text-[#5b21b6] font-extrabold rounded-full text-[14px] md:text-[15px] transition-transform active:scale-[0.97] flex items-center justify-center gap-2 shadow-sm"
                 >
                   I am a Doctor
                 </button>
-                <p className="text-center text-[10px] text-slate-400 font-medium tracking-wide pt-1">
+                <p className="text-center text-[10px] text-slate-400 font-bold tracking-wide pt-1">
                   Secure. Private. For You.
                 </p>
               </div>

@@ -1,19 +1,5 @@
 import './globals.css';
 import type { Metadata } from 'next';
-import { Inter, Great_Vibes } from 'next/font/google';
-
-const inter = Inter({ 
-  subsets: ['latin'],
-  variable: '--font-inter',
-  display: 'swap',
-});
-
-const bloom = Great_Vibes({
-  weight: '400',
-  subsets: ['latin'],
-  variable: '--font-bloom',
-  display: 'swap',
-});
 
 export const metadata: Metadata = {
   title: 'SheBloom — Women\'s Health App',
@@ -28,7 +14,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${inter.variable} ${bloom.variable}`}>
+    <html lang="en">
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link 
+          href="https://fonts.googleapis.com/css2?family=Great+Vibes&family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Plus+Jakarta+Sans:ital,wght@0,200..800;1,200..800&display=swap" 
+          rel="stylesheet" 
+        />
+      </head>
       <body className="font-sans antialiased bg-slate-50 min-h-screen" suppressHydrationWarning>
         <AuthProvider>
           <div className="flex w-full min-h-screen justify-center items-stretch bg-slate-50">

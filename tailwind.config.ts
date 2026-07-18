@@ -114,10 +114,11 @@ const config: Config = {
 
       // ─── Typography ───────────────────────────────────────────────────────
       fontFamily: {
-        // Script/serif wordmark — Great Vibes loaded via Google Fonts in layout
-        bloom: ['var(--font-bloom)', 'cursive'],
-        // Clean UI sans-serif — Inter already loaded
-        sans: ['var(--font-inter)', 'system-ui', 'sans-serif'],
+        // Script/serif wordmark loaded via standard HTML link
+        bloom: ['"Great Vibes"', 'cursive'],
+        // Clean UI sans-serif loaded via standard HTML link
+        sans: ['"Plus Jakarta Sans"', 'system-ui', 'sans-serif'],
+        playfair: ['"Playfair Display"', 'serif'],
       },
 
       // ─── Spacing (8px grid) ───────────────────────────────────────────────

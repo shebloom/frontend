@@ -47,7 +47,7 @@
 
   body {
     @apply bg-lavender-100 text-foreground;
-    font-family: var(--font-inter);
+    font-family: 'Plus Jakarta Sans', var(--font-bloom), sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }

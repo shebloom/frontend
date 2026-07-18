@@ -83,14 +83,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <div className="w-full h-full flex flex-col md:flex-row relative">
         
         {/* Left side: desktop banner (Hidden on mobile) */}
-        <div className="hidden md:block md:w-1/2 h-full relative bg-[#F7F4FB] shrink-0">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img 
-            src="/images/left_banner_full.jpg" 
-            alt="SheBloom Features" 
-            className="w-full h-full object-cover"
-          />
-        </div>
+        <AuthSidebar className="md:w-1/2" />
 
         {/* Right side: Mobile view & Desktop split (50%) app view */}
         <div className="w-full md:w-1/2 h-full flex flex-col overflow-hidden relative bg-white pb-20">

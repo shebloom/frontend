@@ -45,25 +45,22 @@ export default function WellnessPage() {
     <div className="pb-24">
       {/* Header */}
       <header className="bg-bloom-header px-5 pb-4 pt-6">
-        <h1 className="text-xl font-bold text-slate-800">Wellness & Yoga</h1>
+        <h1 className="text-xl font-bold text-slate-800">Wellness &amp; Yoga</h1>
         <p className="mt-0.5 text-sm text-slate-500">Live classes and self-paced sessions</p>
       </header>
 
       {/* Live Classes */}
       <section className="px-5 pt-5">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between mb-3">
           <h2 className="text-base font-semibold text-slate-800">Live Classes</h2>
-          <span className="flex items-center gap-1.5 text-xs font-medium text-red-500">
-            <span className="h-2 w-2 animate-pulse rounded-full bg-red-500" />
-            Live Soon
-          </span>
+          <Link href="/wellness" className="text-sm font-medium text-bloom-600">View All</Link>
         </div>
 
-        <div className="mt-3 flex flex-col gap-3">
+        <div className="flex flex-col gap-3">
           {loading ? (
             <p className="text-xs text-slate-400 font-medium">Loading classes...</p>
           ) : liveSessions.map((session) => (
-            <LiveClassCard key={session.id} session={session} onJoin={() => setActiveSession(session)} />
+            <LiveClassRow key={session.id} session={session} onJoin={() => setActiveSession(session)} />
           ))}
         </div>
       </section>
@@ -92,12 +89,12 @@ export default function WellnessPage() {
 
       {/* Self-Paced Sessions */}
       <section className="px-5 pt-6">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between mb-3">
           <h2 className="text-base font-semibold text-slate-800">Self-Paced Sessions</h2>
           <Link href="/insights" className="text-sm font-medium text-bloom-600">See all</Link>
         </div>
 
-        <div className="mt-3 flex flex-col gap-3">
+        <div className="flex flex-col gap-3">
           {selfPaced.map((session) => (
             <SelfPacedCard key={session.id} session={session} onPlay={() => setActiveSession(session)} />
           ))}
@@ -112,7 +109,7 @@ export default function WellnessPage() {
   );
 }
 
-function LiveClassCard({
+function LiveClassRow({
   session,
   onJoin,
 }: {
@@ -120,39 +117,26 @@ function LiveClassCard({
   onJoin: () => void;
 }) {
   return (
-    <div className="overflow-hidden rounded-3xl bg-white shadow-bloom-card border border-bloom-100/60">
-      <div className="relative h-36 overflow-hidden">
+    <div className="flex items-center gap-3 rounded-2xl bg-white p-4 shadow-bloom-card border border-bloom-100/60">
+      <div className="relative h-16 w-20 shrink-0 overflow-hidden rounded-xl">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={session.thumbnailUrl} alt={session.title} className="h-full w-full object-cover" />
-        <div className="absolute inset-0 bg-gradient-to-t from-bloom-900/60 to-transparent" />
-        <div className="absolute bottom-0 left-0 p-3">
-          <h3 className="text-base font-bold text-white">{session.title}</h3>
-          <p className="text-xs text-white/80">{session.subtitle}</p>
-        </div>
-        <div className="absolute right-3 top-3 flex items-center gap-1 rounded-full bg-red-500 px-2.5 py-1 text-xs font-semibold text-white">
-          <span className="h-1.5 w-1.5 rounded-full bg-white" />
-          LIVE
+        <div className="absolute inset-0 bg-black/20" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <h3 className="text-sm font-semibold text-slate-800 leading-tight">{session.title}</h3>
+        <p className="text-xs text-slate-500 mt-0.5">{session.scheduledAt}</p>
+        <div className="flex items-center gap-1 mt-1">
+          <Clock className="h-3 w-3 text-slate-400" />
+          <span className="text-[10px] text-slate-400">{session.duration}</span>
         </div>
       </div>
-      <div className="flex items-center justify-between p-3">
-        <div className="flex items-center gap-3 text-xs text-slate-500">
-          <span className="flex items-center gap-1">
-            <Calendar className="h-3.5 w-3.5" />
-            {session.scheduledAt}
-          </span>
-          <span className="flex items-center gap-1">
-            <Clock className="h-3.5 w-3.5" />
-            {session.duration}
-          </span>
-        </div>
-        <button
-          onClick={onJoin}
-          className="flex h-9 items-center gap-1.5 rounded-full bg-bloom-gradient px-4 text-sm font-semibold text-white shadow-bloom-btn transition hover:brightness-105 active:scale-95"
-        >
-          <Video className="h-4 w-4" />
-          Join
-        </button>
-      </div>
+      <button
+        onClick={onJoin}
+        className="flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-bloom-gradient px-4 text-xs font-semibold text-white shadow-bloom-btn transition hover:brightness-105 active:scale-95"
+      >
+        Join
+      </button>
     </div>
   );
 }
@@ -169,18 +153,17 @@ function SelfPacedCard({
       onClick={onPlay}
       className="flex items-center gap-3 rounded-2xl bg-white p-3 shadow-bloom-card border border-bloom-100/60 text-left transition active:scale-[0.98]"
     >
-      <div className="relative h-16 w-24 shrink-0 overflow-hidden rounded-xl">
+      <div className="relative h-14 w-20 shrink-0 overflow-hidden rounded-xl">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={session.thumbnailUrl} alt={session.title} className="h-full w-full object-cover" />
         <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/90">
-            <Play className="h-4 w-4 fill-bloom-600 text-bloom-600" />
+          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-white/90">
+            <Play className="h-3.5 w-3.5 fill-bloom-600 text-bloom-600" />
           </div>
         </div>
       </div>
       <div className="min-w-0 flex-1">
         <h3 className="truncate text-sm font-semibold text-slate-800">{session.title}</h3>
-        <p className="truncate text-xs text-slate-500">{session.subtitle}</p>
         <div className="mt-1 flex items-center gap-2">
           <span className="flex items-center gap-1 text-xs text-slate-400">
             <Clock className="h-3 w-3" />

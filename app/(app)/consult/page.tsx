@@ -2,18 +2,15 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Search, Star, ChevronRight } from 'lucide-react';
+import { Search, Star } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { apiFetch } from '@/lib/api';
 
 const filters = [
   'All', 
-  'General Gynecology', 
-  'Obstetrics', 
-  'IVF & Fertility', 
-  'Menopause Management', 
-  'PCOS Specialist', 
-  'Gynecologic Oncology'
+  'Gynecologist', 
+  'IVF Specialist', 
+  'Fertility Expert',
 ];
 
 export default function ConsultPage() {
@@ -27,7 +24,6 @@ export default function ConsultPage() {
       try {
         const queryParams = new URLSearchParams();
         if (activeFilter !== 'All') {
-          // If a specific filter is clicked, we just search for it so it matches tags or specialty
           queryParams.append('search', activeFilter);
         } else if (search) {
           queryParams.append('search', search);
@@ -42,7 +38,6 @@ export default function ConsultPage() {
       }
     }
 
-    // Debounce the search
     const timer = setTimeout(() => {
       loadDoctors();
     }, 300);
@@ -55,17 +50,16 @@ export default function ConsultPage() {
       {/* Header */}
       <header className="bg-bloom-header px-5 pb-4 pt-6">
         <h1 className="text-xl font-bold text-slate-800">Find Your Doctor</h1>
-        <p className="mt-0.5 text-sm text-slate-500">Consult with expert gynecologists</p>
 
         {/* Search */}
         <div className="relative mt-4">
-          <Search className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+          <Search className="absolute left-3.5 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
             value={search}
             onChange={(e) => { setSearch(e.target.value); setActiveFilter('All'); }}
-            placeholder="Search by name, degree, or specialty..."
-            className="h-12 w-full rounded-xl border border-bloom-100 bg-white pl-11 pr-4 text-sm text-slate-700 placeholder:text-slate-400 focus:border-bloom-300 focus:outline-none focus:ring-2 focus:ring-bloom-200"
+            placeholder="Search doctor, speciality or concern"
+            className="h-12 w-full rounded-2xl border border-bloom-100 bg-white pl-11 pr-4 text-sm text-slate-700 placeholder:text-slate-400 focus:border-bloom-300 focus:outline-none focus:ring-2 focus:ring-bloom-200"
           />
         </div>
 
@@ -120,67 +114,46 @@ export default function ConsultPage() {
 }
 
 function DoctorListCard({ doctor }: { doctor: any }) {
-  const allTags = [
-    ...(doctor.specialties || []),
-    ...(doctor.degrees || []),
-    ...(doctor.universities || [])
-  ];
-
   return (
-    <div
-      className="rounded-3xl bg-white p-4 shadow-sm border border-bloom-100/50 hover:border-bloom-200 transition-colors"
-    >
-      <div className="flex items-start gap-3">
-        <div className="h-20 w-20 shrink-0 overflow-hidden rounded-2xl bg-bloom-100 ring-2 ring-white shadow-sm">
-          <img 
-            src={doctor.users?.avatar_url || "/images/dr_deepa_avatar.jpg"} 
-            alt={doctor.users?.full_name || "Doctor"} 
-            className="h-full w-full object-cover" 
-          />
-        </div>
-
-        <div className="min-w-0 flex-1">
-          <h3 className="truncate text-base font-bold text-slate-800">{doctor.users?.full_name}</h3>
-          <p className="truncate text-[11px] font-bold text-bloom-600 mt-0.5">{doctor.specialty || 'General Practitioner'}</p>
-          <p className="mt-1 text-[10px] text-slate-500 font-semibold">{doctor.experience_years} Years Exp · {doctor.languages?.join(', ') || 'English'}</p>
-
-          <div className="mt-1.5 flex items-center gap-1.5">
-            <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
-            <span className="text-xs font-bold text-slate-700">{Number(doctor.rating || 4.9).toFixed(1)}</span>
-            <span className="text-[10px] text-slate-400 font-semibold">({doctor.review_count || 120} reviews)</span>
-          </div>
+    <div className="rounded-3xl bg-white shadow-bloom-card border border-bloom-100/50 overflow-hidden hover:border-bloom-200 transition-colors">
+      {/* Doctor image area - full width */}
+      <div className="relative h-40 overflow-hidden">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img 
+          src={doctor.users?.avatar_url || "/images/dr_deepa_avatar.jpg"} 
+          alt={doctor.users?.full_name || "Doctor"} 
+          className="h-full w-full object-cover object-top" 
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
+        <div className="absolute bottom-0 left-0 p-4 w-full">
+          <h3 className="text-base font-bold text-white">{doctor.users?.full_name}</h3>
+          <p className="text-[11px] font-semibold text-white/80 mt-0.5">{doctor.specialty || 'General Practitioner'}</p>
+          <p className="text-[10px] text-white/70 mt-0.5">{doctor.experience_years}+ Years Experience · {doctor.languages?.join(', ') || 'English, Malayalam'}</p>
         </div>
       </div>
 
-      {/* Tags Section */}
-      {allTags.length > 0 && (
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {allTags.slice(0, 4).map((tag, idx) => (
-            <span key={idx} className="bg-slate-50 border border-slate-100 text-slate-600 px-2 py-0.5 rounded-md text-[9px] font-bold">
-              {tag}
-            </span>
-          ))}
-          {allTags.length > 4 && (
-            <span className="bg-slate-50 border border-slate-100 text-slate-400 px-2 py-0.5 rounded-md text-[9px] font-bold">
-              +{allTags.length - 4} more
-            </span>
-          )}
+      {/* Info area */}
+      <div className="p-4">
+        <div className="flex items-center gap-1.5 mb-3">
+          <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
+          <span className="text-xs font-bold text-slate-700">{Number(doctor.rating || 4.9).toFixed(1)}</span>
+          <span className="text-[10px] text-slate-400 font-semibold">({doctor.review_count || 120} reviews)</span>
         </div>
-      )}
 
-      <div className="mt-4 grid grid-cols-2 gap-2.5 pt-3 border-t border-slate-50">
-        <Link
-          href={`/consult/${doctor.id}`}
-          className="flex h-10 items-center justify-center rounded-xl border border-bloom-200 bg-white text-xs font-bold text-bloom-700 transition hover:bg-bloom-50 active:scale-[0.98]"
-        >
-          View Profile
-        </Link>
-        <Link
-          href={`/consult/${doctor.id}/book`}
-          className="flex h-9 items-center justify-center rounded-xl bg-bloom-gradient text-xs font-bold text-white shadow-sm transition hover:opacity-90 active:scale-[0.98]"
-        >
-          Book Now
-        </Link>
+        <div className="grid grid-cols-2 gap-2.5">
+          <Link
+            href={`/consult/${doctor.id}`}
+            className="flex h-10 items-center justify-center rounded-xl border border-bloom-200 bg-white text-xs font-bold text-bloom-700 transition hover:bg-bloom-50 active:scale-[0.98]"
+          >
+            View Profile
+          </Link>
+          <Link
+            href={`/consult/${doctor.id}/book`}
+            className="flex h-10 items-center justify-center rounded-xl bg-bloom-gradient text-xs font-bold text-white shadow-sm transition hover:opacity-90 active:scale-[0.98]"
+          >
+            Book Now
+          </Link>
+        </div>
       </div>
     </div>
   );

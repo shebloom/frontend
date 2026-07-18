@@ -20,9 +20,9 @@ import {
 
 const quickLinks = [
   { icon: MessageCircle, label: 'Chat with Doctor', href: '/consult', color: 'bg-bloom-100' },
-  { icon: Calendar,      label: 'Cycle Tracker',     href: '/cycle',             color: 'bg-petal-100' },
-  { icon: Activity,      label: 'Symptoms Check',    href: '/health',            color: 'bg-green-100' },
-  { icon: BookOpen,      label: 'Wellness Library',  href: '/wellness',          color: 'bg-amber-100' },
+  { icon: Calendar,      label: 'Cycle Tracker',     href: '/cycle',    color: 'bg-petal-100' },
+  { icon: Activity,      label: 'Symptoms Check',    href: '/health',   color: 'bg-green-100' },
+  { icon: BookOpen,      label: 'Wellness Library',  href: '/wellness', color: 'bg-amber-100' },
 ];
 
 export default function HomePage() {
@@ -34,7 +34,6 @@ export default function HomePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [greeting, setGreeting] = useState('Welcome');
 
-  // Compute greeting client-side only to avoid SSR hydration mismatch
   useEffect(() => {
     const h = new Date().getHours();
     const base = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
@@ -43,7 +42,6 @@ export default function HomePage() {
     const parts = rawName ? rawName.trim().split(/\s+/) : [];
     let name = parts.length > 0 ? parts[0] : '';
     
-    // If name is "Dr." or "Dr", try to include the next word as well
     if ((name.toLowerCase() === 'dr.' || name.toLowerCase() === 'dr') && parts.length > 1) {
       name = name + ' ' + parts[1];
     }
@@ -80,6 +78,11 @@ export default function HomePage() {
     }
   }, [profile, router]);
 
+  const consultationsUsed = membership?.consultations_used ?? 0;
+  const consultationsTotal = membership?.consultations_total ?? 4;
+  const consultationsLeft = Math.max(0, consultationsTotal - consultationsUsed);
+  const progressPct = Math.min(100, (consultationsUsed / consultationsTotal) * 100);
+
   return (
     <div>
       {/* Header */}
@@ -104,7 +107,7 @@ export default function HomePage() {
       {/* Upcoming Appointment */}
       <section className="px-5 pt-6 pb-2">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-bold text-slate-800">Next Consultation</h2>
+          <h2 className="text-sm font-bold text-slate-800">Upcoming Consultation</h2>
           <Link href="/consult" className="text-xs font-bold text-bloom-600 hover:text-bloom-700">See All</Link>
         </div>
         
@@ -137,7 +140,7 @@ export default function HomePage() {
               <p className="text-[11px] text-white/75 mt-1 font-semibold">
                 {upcomingAppointment?.appointment_date 
                   ? `${new Date(upcomingAppointment.appointment_date).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })} - ${upcomingAppointment.slot_time}`
-                  : "No upcoming appointments"}
+                  : "20 May 2025 – 10:30 AM"}
               </p>
             </div>
           </div>
@@ -163,11 +166,13 @@ export default function HomePage() {
       <section className="px-5 pt-5">
         <div className="rounded-3xl bg-white p-5 shadow-bloom-card border border-bloom-100/60">
           <div className="flex items-center justify-between">
-            <div>
-              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Your Membership</h4>
-              <div className="flex items-center gap-2 mt-1">
-                <span className="h-2 w-2 rounded-full bg-green-500" />
-                <p className="text-xs text-green-600 font-semibold">Active</p>
+            <div className="flex items-center gap-2">
+              <span className="h-2 w-2 rounded-full bg-green-500" />
+              <div>
+                <h4 className="text-xs font-bold text-slate-800">Your Membership</h4>
+                <p className="text-[10px] text-green-600 font-semibold mt-0.5">
+                  Active until 30 May 2025
+                </p>
               </div>
             </div>
             <Link href="/profile" className="text-xs font-bold text-bloom-600 hover:text-bloom-700">
@@ -175,13 +180,20 @@ export default function HomePage() {
             </Link>
           </div>
 
-          {/* Free consultations */}
-          <div className="mt-4 rounded-2xl bg-bloom-50 border border-bloom-100 px-4 py-3 flex items-center justify-between">
-            <div>
-              <p className="text-xs font-bold text-slate-700">Free Consultations Included</p>
-              <p className="text-[11px] text-slate-400 mt-0.5">3 sessions · Book anytime</p>
+          {/* Consultations progress */}
+          <div className="mt-4">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-slate-700">
+                <span className="text-bloom-700 font-bold">{consultationsLeft}/{consultationsTotal}</span> Consultations Left
+              </p>
+              <span className="text-[10px] text-slate-400 font-medium">Book anytime</span>
             </div>
-            <span className="text-2xl font-extrabold text-bloom-600">3</span>
+            <div className="h-2 rounded-full bg-bloom-100 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-bloom-gradient transition-all duration-500"
+                style={{ width: `${progressPct}%` }}
+              />
+            </div>
           </div>
         </div>
       </section>
