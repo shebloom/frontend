@@ -149,8 +149,9 @@ export default function ProfilePage() {
       setIsEditing(false);
       setSuccessMsg('Profile updated! ✓');
       setTimeout(() => setSuccessMsg(''), 3000);
-    } catch {
-      alert('Failed to save profile. Please try again.');
+    } catch (err: any) {
+      setSuccessMsg('');
+      alert(`Failed to save profile: ${err?.message || 'Please try again.'}`); 
     } finally {
       setSaving(false);
     }

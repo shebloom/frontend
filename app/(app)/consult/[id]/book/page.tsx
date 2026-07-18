@@ -12,7 +12,7 @@ export default function BookingPage() {
   
   const [doctor, setDoctor] = useState<any>(null);
   const [selectedDate, setSelectedDate] = useState<string>('');
-  const [slots, setSlots] = useState<string[]>([]);
+  const [slots, setSlots] = useState<{ time: string; isBooked: boolean }[]>([]);
   const [selectedSlot, setSelectedSlot] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -34,7 +34,12 @@ export default function BookingPage() {
     // Load slots for the selected date
     apiFetch(`/doctors/${params.id}/slots?date=${selectedDate}`)
       .then((res) => {
-        setSlots(res.slots || []);
+        // Support both old string[] format and new { time, isBooked }[] format
+        const rawSlots = res.slots || [];
+        const normalized = rawSlots.map((s: any) =>
+          typeof s === 'string' ? { time: s, isBooked: false } : s
+        );
+        setSlots(normalized);
         setSelectedSlot('');
       })
       .catch(console.error);
@@ -151,15 +156,23 @@ export default function BookingPage() {
           <div className="grid grid-cols-3 gap-3 mb-8">
             {slots.map((slot) => (
               <button
-                key={slot}
-                onClick={() => setSelectedSlot(slot)}
-                className={`rounded-xl border py-2.5 text-sm font-medium transition-all ${
-                  selectedSlot === slot
+                key={slot.time}
+                onClick={() => !slot.isBooked && setSelectedSlot(slot.time)}
+                disabled={slot.isBooked}
+                className={`relative rounded-xl border py-2.5 text-sm font-medium transition-all ${
+                  slot.isBooked
+                    ? 'border-red-100 bg-red-50 text-red-300 cursor-not-allowed'
+                    : selectedSlot === slot.time
                     ? 'border-bloom-400 bg-bloom-50 text-bloom-700'
                     : 'border-bloom-100 bg-white text-slate-600 hover:bg-slate-50'
                 }`}
               >
-                {slot}
+                {slot.time}
+                {slot.isBooked && (
+                  <span className="absolute -top-1.5 -right-1.5 text-[8px] font-bold bg-red-500 text-white px-1.5 py-0.5 rounded-full leading-none">
+                    Booked
+                  </span>
+                )}
               </button>
             ))}
           </div>

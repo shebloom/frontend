@@ -83,6 +83,9 @@ export default function HomePage() {
   const consultationsLeft = Math.max(0, consultationsTotal - consultationsUsed);
   const progressPct = Math.min(100, (consultationsUsed / consultationsTotal) * 100);
 
+  // Don't render patient home for admins (redirect is pending) or when profile not yet loaded
+  if (!profile || profile.role === 'admin') return null;
+
   return (
     <div>
       {/* Header */}

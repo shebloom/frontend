@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { BloomLogo, GradientButton, AuthSidebar } from '@/components/shebloom';
 import { User, Stethoscope } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
+import { supabase } from '@/lib/supabase';
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -20,6 +21,7 @@ export default function OnboardingPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
+  const [slotDuration, setSlotDuration] = useState('30');
 
   const handlePatientSubmit = async () => {
     // Patients don't need further setup, they are default.
@@ -43,11 +45,37 @@ export default function OnboardingPage() {
     setLoading(true);
     setError(null);
     setIsUploading(true);
+    setUploadProgress(10);
 
-    // Mock progress bar animation
-    for (let progress = 10; progress <= 100; progress += 30) {
-      setUploadProgress(progress);
-      await new Promise((resolve) => setTimeout(resolve, 200));
+    let documentUrl = '';
+    try {
+      // Upload file to Supabase Storage
+      const fileExt = selectedFile.name.split('.').pop();
+      const fileName = `${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExt}`;
+      setUploadProgress(30);
+
+      const { error: uploadError } = await supabase.storage
+        .from('doctor-documents')
+        .upload(fileName, selectedFile, { cacheControl: '3600', upsert: false });
+
+      if (uploadError) {
+        throw new Error(`Document upload failed: ${uploadError.message}`);
+      }
+      setUploadProgress(70);
+
+      // Get the public URL
+      const { data: urlData } = supabase.storage
+        .from('doctor-documents')
+        .getPublicUrl(fileName);
+
+      documentUrl = urlData.publicUrl;
+      setUploadProgress(100);
+    } catch (uploadErr: any) {
+      setError(uploadErr.message || 'Failed to upload document. Please try again.');
+      setLoading(false);
+      setIsUploading(false);
+      setUploadProgress(0);
+      return;
     }
     setIsUploading(false);
 
@@ -63,7 +91,8 @@ export default function OnboardingPage() {
           license_number: license,
           languages: ['English'],
           phone, // Contact number
-          document_urls: [selectedFile.name]
+          document_urls: [documentUrl],
+          slot_duration: parseInt(slotDuration, 10),
         })
       });
       router.push('/home');
@@ -117,18 +146,11 @@ export default function OnboardingPage() {
 
               {/* Center Doctor Image with fade */}
               <div className="relative w-full flex-1 flex flex-col justify-end min-h-0">
-                <style dangerouslySetInnerHTML={{__html: `
-                  .dr-deepa-img {
-                    height: 100% !important;
-                    object-fit: cover !important;
-                    width: 100% !important;
-                  }
-                `}} />
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img 
                   src="/images/dr_deepa_pink_cropped.png" 
                   alt="Dr. Deepa" 
-                  className="dr-deepa-img object-top w-full"
+                  className="w-full h-full object-cover object-top"
                   onError={(e) => {
                     const target = e.target as HTMLImageElement;
                     target.onerror = null;
@@ -201,6 +223,20 @@ export default function OnboardingPage() {
                   <div>
                     <label className="mb-1 block text-[10px] font-bold text-slate-500 uppercase tracking-wider">Contact Number</label>
                     <input type="tel" required value={phone} onChange={e => setPhone(e.target.value)} className="h-11 w-full rounded-xl border-0 bg-slate-50 px-3 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-bloom-300 transition-all font-medium" placeholder="+91 98765 43210" />
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-[10px] font-bold text-slate-500 uppercase tracking-wider">Consultation Slot Duration (Time Gap)</label>
+                    <select 
+                      value={slotDuration} 
+                      onChange={e => setSlotDuration(e.target.value)} 
+                      className="h-11 w-full rounded-xl border-0 bg-slate-50 px-3 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-bloom-300 transition-all font-medium text-slate-700 focus:outline-none"
+                    >
+                      <option value="15">15 Minutes</option>
+                      <option value="30">30 Minutes</option>
+                      <option value="45">45 Minutes</option>
+                      <option value="60">60 Minutes</option>
+                    </select>
                   </div>
 
                   <div>

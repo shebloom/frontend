@@ -11,22 +11,34 @@ import { useGoogleAuth } from '@/hooks/useGoogleAuth';
 
 export default function LoginPage() {
   const router = useRouter();
-  const { refreshProfile } = useAuth();
+  const { refreshProfile, profile } = useAuth();
   const { signIn: googleSignIn } = useGoogleAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loginSuccess, setLoginSuccess] = useState(false);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       if (params.get('error') === 'no_user') {
-        setError("You need to signup, no such user exists.");
+        setError("No account found with this email. Please sign up first.");
       }
     }
   }, []);
+
+  // Once login succeeds and profile is loaded, redirect to home
+  useEffect(() => {
+    if (loginSuccess && profile) {
+      if (profile.role === 'admin') {
+        router.replace('/admin-panel');
+      } else {
+        router.replace('/home');
+      }
+    }
+  }, [loginSuccess, profile, router]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,11 +54,12 @@ export default function LoginPage() {
       if (signInError) throw signInError;
       
       await refreshProfile();
-      router.push('/home');
+      // Mark success — the useEffect above will redirect once profile loads
+      setLoginSuccess(true);
     } catch (err: any) {
       let friendlyError = 'Oops, something went wrong on our end. Please try again in a moment.';
       if (err.message?.includes('Invalid login credentials')) {
-        friendlyError = 'You need to signup, no such user exists.';
+        friendlyError = 'No account found with this email and password. Please check your details or sign up.';
       } else if (err.message?.includes('Email not confirmed')) {
         friendlyError = 'Please check your email to confirm your account before logging in.';
       } else if (err.message) {
@@ -116,8 +129,8 @@ export default function LoginPage() {
             </div>
           </div>
 
-          <GradientButton type="submit" size="lg" fullWidth className="mt-4" disabled={loading}>
-            {loading ? 'Logging in...' : 'Log In'}
+          <GradientButton type="submit" size="lg" fullWidth className="mt-4" disabled={loading || loginSuccess}>
+            {loginSuccess ? 'Redirecting...' : loading ? 'Logging in...' : 'Log In'}
           </GradientButton>
         </form>
 
@@ -133,7 +146,8 @@ export default function LoginPage() {
             setError(null);
             try {
               await googleSignIn(true);
-              router.push('/home');
+              await refreshProfile();
+              setLoginSuccess(true);
             } catch (err: any) {
               // Don't show error if user just closed the popup
               if (err.message !== 'popup_closed_by_user') {
