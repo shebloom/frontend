@@ -10,6 +10,19 @@ export default function WellnessCategoryHubPage() {
   const [activeVideoUrl, setActiveVideoUrl] = useState<string | null>(null);
   const [activeVideoTitle, setActiveVideoTitle] = useState<string>('');
 
+  const getEmbedUrl = (url: string): string | null => {
+    if (!url) return null;
+    const ytMatch = url.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/ ]{11})/i);
+    if (ytMatch && ytMatch[1]) {
+      return `https://www.youtube.com/embed/${ytMatch[1]}?autoplay=1`;
+    }
+    const vimeoMatch = url.match(/vimeo\.com\/(?:channels\/(?:\w+\/)?|groups\/(?:[^\/]+)\/videos\/|\d+\/|video\/)?(\d+)(?:[a-zA-Z0-9_\-]+)?/i);
+    if (vimeoMatch && vimeoMatch[1]) {
+      return `https://player.vimeo.com/video/${vimeoMatch[1]}?autoplay=1`;
+    }
+    return null;
+  };
+
   useEffect(() => {
     async function loadContent() {
       try {
@@ -122,12 +135,22 @@ export default function WellnessCategoryHubPage() {
               <X className="w-4 h-4" />
             </button>
             <div className="relative aspect-video w-full bg-black">
-              <video
-                controls
-                autoPlay
-                src={activeVideoUrl}
-                className="w-full h-full object-contain"
-              />
+              {getEmbedUrl(activeVideoUrl) ? (
+                <iframe
+                  src={getEmbedUrl(activeVideoUrl)!}
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                  className="w-full h-full border-0"
+                  title={activeVideoTitle}
+                />
+              ) : (
+                <video
+                  controls
+                  autoPlay
+                  src={activeVideoUrl}
+                  className="w-full h-full object-contain"
+                />
+              )}
             </div>
             <div className="p-5 text-white">
               <h3 className="font-bold font-playfair text-base">{activeVideoTitle}</h3>

@@ -26,6 +26,19 @@ export default function YogaCoursePlaylistPage() {
   const [activeVideo, setActiveVideo] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
+  const getEmbedUrl = (url: string): string | null => {
+    if (!url) return null;
+    const ytMatch = url.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/ ]{11})/i);
+    if (ytMatch && ytMatch[1]) {
+      return `https://www.youtube.com/embed/${ytMatch[1]}`;
+    }
+    const vimeoMatch = url.match(/vimeo\.com\/(?:channels\/(?:\w+\/)?|groups\/(?:[^\/]+)\/videos\/|\d+\/|video\/)?(\d+)(?:[a-zA-Z0-9_\-]+)?/i);
+    if (vimeoMatch && vimeoMatch[1]) {
+      return `https://player.vimeo.com/video/${vimeoMatch[1]}`;
+    }
+    return null;
+  };
+
   useEffect(() => {
     async function loadCourse() {
       try {
@@ -73,6 +86,8 @@ export default function YogaCoursePlaylistPage() {
     );
   }
 
+  const doctorName = condition?.users?.full_name || 'Dr. Deepa Madhavan';
+
   return (
     <div className="pb-28 max-w-[720px] mx-auto px-4 pt-6 space-y-6">
       
@@ -96,17 +111,26 @@ export default function YogaCoursePlaylistPage() {
       {activeVideo && (
         <div className="bg-black rounded-[32px] overflow-hidden shadow-xl border border-slate-800">
           <div className="relative aspect-video w-full bg-slate-950 flex items-center justify-center">
-            {/* HTML5 Video Player playing external video URL */}
-            <video
-              key={activeVideo.id || activeVideo.video_url}
-              controls
-              autoPlay={false}
-              poster={activeVideo.thumbnail_url}
-              className="w-full h-full object-contain"
-            >
-              <source src={activeVideo.video_url} type="video/mp4" />
-              Your browser does not support video playback.
-            </video>
+            {getEmbedUrl(activeVideo.video_url) ? (
+              <iframe
+                src={getEmbedUrl(activeVideo.video_url)!}
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+                className="w-full h-full border-0"
+                title={activeVideo.title}
+              />
+            ) : (
+              <video
+                key={activeVideo.id || activeVideo.video_url}
+                src={activeVideo.video_url}
+                controls
+                autoPlay={false}
+                poster={activeVideo.thumbnail_url}
+                className="w-full h-full object-contain"
+              >
+                Your browser does not support video playback.
+              </video>
+            )}
           </div>
 
           <div className="p-5 bg-slate-900 text-white space-y-2">

@@ -72,7 +72,8 @@ export default function ConsultPage() {
       try {
         setLoadingSlots(true);
         setSelectedSlot(null);
-        const res = await apiFetch(`/doctors/${doctor.id}/slots?date=${selectedDate}`);
+        const offset = new Date().getTimezoneOffset() * -1;
+        const res = await apiFetch(`/doctors/${doctor.id}/slots?date=${selectedDate}&offset=${offset}`);
         setSlots(res.slots || []);
       } catch (err) {
         console.error('Failed to load slots', err);

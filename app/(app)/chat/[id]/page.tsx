@@ -239,7 +239,8 @@ export default function ChatPage() {
     async function fetchModalSlots() {
       try {
         setLoadingModalSlots(true);
-        const res = await apiFetch(`/doctors/${docId}/slots?date=${modalRescheduleDate}`);
+        const offset = new Date().getTimezoneOffset() * -1;
+        const res = await apiFetch(`/doctors/${docId}/slots?date=${modalRescheduleDate}&offset=${offset}`);
         setModalRescheduleSlots(res.slots || []);
       } catch (err) {
         console.error('Failed to load slots for reschedule modal:', err);
