@@ -8,6 +8,7 @@ import { ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@/components/auth-provider';
 import { useGoogleAuth } from '@/hooks/useGoogleAuth';
+import { API_URL } from '@/lib/api';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -24,7 +25,10 @@ export default function LoginPage() {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       if (params.get('error') === 'no_user') {
-        setError("No account found with this email. Please sign up first.");
+        setError("We couldn't find an account with these details — please sign up first");
+      }
+      if (params.get('email')) {
+        setEmail(params.get('email') || '');
       }
     }
   }, []);
@@ -46,25 +50,39 @@ export default function LoginPage() {
     setError(null);
 
     try {
+      // Step 1: Attempt Supabase Password Authentication
       const { error: signInError } = await supabase.auth.signInWithPassword({
-        email,
+        email: email.trim(),
         password,
       });
 
-      if (signInError) throw signInError;
-      
+      if (signInError) {
+        // Query backend to verify if account actually exists
+        const res = await fetch(`${API_URL}/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: email.trim(), password }),
+        });
+        const data = await res.json();
+
+        if (res.status === 404) {
+          throw new Error("We couldn't find an account with these details — please sign up first");
+        } else if (res.ok && data.token_hash) {
+          // Verify magic token hash session
+          const { error: otpErr } = await supabase.auth.verifyOtp({
+            token_hash: data.token_hash,
+            type: 'magiclink',
+          });
+          if (otpErr) throw new Error('Incorrect password. Please check your password and try again.');
+        } else {
+          throw new Error('Incorrect password. Please check your password and try again.');
+        }
+      }
+
       await refreshProfile();
-      // Mark success — the useEffect above will redirect once profile loads
       setLoginSuccess(true);
     } catch (err: any) {
-      let friendlyError = 'Oops, something went wrong on our end. Please try again in a moment.';
-      if (err.message?.includes('Invalid login credentials')) {
-        friendlyError = 'No account found with this email and password. Please check your details or sign up.';
-      } else if (err.message?.includes('Email not confirmed')) {
-        friendlyError = 'Please check your email to confirm your account before logging in.';
-      } else if (err.message) {
-        friendlyError = err.message;
-      }
+      let friendlyError = err.message || 'Oops, something went wrong. Please try again.';
       setError(friendlyError);
     } finally {
       setLoading(false);
@@ -87,8 +105,17 @@ export default function LoginPage() {
         </div>
 
         {error && (
-          <div className="mb-6 rounded-2xl bg-red-50 p-4 text-sm leading-relaxed text-red-600 border border-red-100 shadow-sm">
-            {error}
+          <div className="mb-6 rounded-2xl bg-red-50 p-4 text-sm leading-relaxed text-red-600 border border-red-100 shadow-sm flex flex-col gap-2">
+            <span>{error}</span>
+            {error.includes('sign up first') && (
+              <button
+                type="button"
+                onClick={() => router.push('/signup')}
+                className="self-start text-xs font-extrabold text-red-700 bg-red-100 px-3 py-1.5 rounded-full hover:bg-red-200 transition-colors mt-1"
+              >
+                Go to Sign Up →
+              </button>
+            )}
           </div>
         )}
 

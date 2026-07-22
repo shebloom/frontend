@@ -23,7 +23,10 @@ import {
   Clock,
   FileCheck,
   UserX,
+  Utensils,
   Star,
+  HeartPulse,
+  Clipboard,
 } from 'lucide-react';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
@@ -53,6 +56,11 @@ export default function ProfilePage() {
   const [degrees, setDegrees] = useState<string[]>([]);
   const [universities, setUniversities] = useState<string[]>([]);
   const [hasDoctorProfile, setHasDoctorProfile] = useState(false);
+
+  // Clinical Diet Parameters
+  const [medicalConditions, setMedicalConditions] = useState('PCOS Insulin Resistance Support');
+  const [dietaryPreference, setDietaryPreference] = useState('Vegetarian');
+  const [symptoms, setSymptoms] = useState('');
 
   // File input ref for avatar
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -108,6 +116,9 @@ export default function ProfilePage() {
       setWeightKg(profile.weight_kg?.toString() || '');
       setHeightCm(profile.height_cm?.toString() || '');
       setBloodGroup(profile.blood_group || '');
+      setMedicalConditions((profile as any).medical_conditions || 'PCOS Insulin Resistance Support');
+      setDietaryPreference((profile as any).dietary_preference || 'Vegetarian');
+      setSymptoms((profile as any).symptoms || '');
 
       // If doctor, fetch doctor profile details
       if (profile.role === 'doctor') {
@@ -141,6 +152,9 @@ export default function ProfilePage() {
         weight_kg: weightKg ? parseFloat(weightKg) : null,
         height_cm: heightCm ? parseFloat(heightCm) : null,
         blood_group: bloodGroup || null,
+        medical_conditions: medicalConditions || null,
+        dietary_preference: dietaryPreference || null,
+        symptoms: symptoms || null,
       };
       
       if (avatarBase64) {
@@ -399,10 +413,11 @@ export default function ProfilePage() {
           )}
         </div>
 
-        {/* Health Metrics */}
+        {/* Health Metrics & Clinical Diet Parameters */}
         {profile?.role !== 'doctor' && (
-          <div className="rounded-3xl bg-white p-5 shadow-sm border border-bloom-100 space-y-4">
-            <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Health Metrics</p>
+          <>
+            <div className="rounded-3xl bg-white p-5 shadow-sm border border-bloom-100 space-y-4">
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Health Metrics</p>
 
             {isEditing ? (
               <div className="grid grid-cols-2 gap-3">
@@ -413,7 +428,7 @@ export default function ProfilePage() {
                     value={weightKg}
                     onChange={(e) => setWeightKg(e.target.value)}
                     placeholder="60"
-                    className="h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-bloom-300"
+                    className="h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-bloom-300 font-semibold"
                   />
                 </div>
                 <div>
@@ -423,7 +438,7 @@ export default function ProfilePage() {
                     value={heightCm}
                     onChange={(e) => setHeightCm(e.target.value)}
                     placeholder="165"
-                    className="h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-bloom-300"
+                    className="h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-bloom-300 font-semibold"
                   />
                 </div>
                 <div className="col-span-2">
@@ -431,7 +446,7 @@ export default function ProfilePage() {
                   <select
                     value={bloodGroup}
                     onChange={(e) => setBloodGroup(e.target.value)}
-                    className="h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-bloom-300"
+                    className="h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-bloom-300 font-semibold"
                   >
                     <option value="">Select...</option>
                     {['A+','A-','B+','B-','AB+','AB-','O+','O-'].map(g => (
@@ -449,6 +464,59 @@ export default function ProfilePage() {
               </div>
             )}
           </div>
+
+          <div className="rounded-3xl bg-white p-5 shadow-sm border border-bloom-100 space-y-4">
+            <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Clinical Diet Parameters</p>
+            
+            {isEditing ? (
+              <div className="space-y-3.5">
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-slate-500">Medical Condition / Focus</label>
+                  <select
+                    value={medicalConditions}
+                    onChange={(e) => setMedicalConditions(e.target.value)}
+                    className="h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-bloom-300 font-semibold"
+                  >
+                    <option value="PCOS Insulin Resistance Support">PCOS Insulin Resistance Support</option>
+                    <option value="Thyroid Metabolic Support">Thyroid Metabolic Support</option>
+                    <option value="Menstrual Cycle & Cramps Support">Menstrual Cycle & Cramps Support</option>
+                    <option value="Fertility Nourishment Plan">Fertility Nourishment Plan</option>
+                    <option value="General Hormonal Balance & Wellness">General Hormonal Balance & Wellness</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-slate-500">Dietary Preference</label>
+                  <select
+                    value={dietaryPreference}
+                    onChange={(e) => setDietaryPreference(e.target.value)}
+                    className="h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-bloom-300 font-semibold"
+                  >
+                    <option value="Vegetarian">Vegetarian</option>
+                    <option value="Non-Vegetarian">Non-Vegetarian</option>
+                    <option value="Vegan">Vegan</option>
+                    <option value="Eggetarian">Eggetarian</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-slate-500">Symptoms & Notes</label>
+                  <textarea
+                    rows={3}
+                    value={symptoms}
+                    onChange={(e) => setSymptoms(e.target.value)}
+                    placeholder="e.g. Irregular cycles, fatigue..."
+                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-bloom-300 resize-none font-medium"
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3.5">
+                <InfoRow icon={HeartPulse} label="Medical Condition" value={(profile as any)?.medical_conditions || 'Not configured'} />
+                <InfoRow icon={Utensils} label="Dietary Preference" value={(profile as any)?.dietary_preference || 'Not configured'} />
+                <InfoRow icon={Clipboard} label="Symptoms / Notes" value={(profile as any)?.symptoms || 'None'} />
+              </div>
+            )}
+          </div>
+          </>
         )}
 
         {/* Doctor Analytics */}

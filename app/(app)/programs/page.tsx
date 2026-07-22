@@ -26,18 +26,18 @@ export default function ProgramsPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const displayPrograms = dbPrograms.length > 0 ? dbPrograms : fallbackPrograms;
+  const displayPrograms = dbPrograms;
   const filtered = displayPrograms.filter(
     (p) => activeFilter === 'All' || p.category === activeFilter,
   );
 
   return (
-    <div className="pb-24">
+    <div className="pb-24 max-w-[640px] mx-auto">
       {/* Header */}
       <header className="bg-bloom-header px-5 pb-4 pt-6">
-        <h1 className="text-xl font-bold text-slate-800">Programs for Every Stage</h1>
-        <p className="mt-0.5 text-sm text-slate-500">
-          Expert-led programs tailored to your needs
+        <h1 className="text-xl font-bold text-slate-800 font-playfair">Programs for Every Stage</h1>
+        <p className="mt-0.5 text-sm text-slate-500 font-medium">
+          Expert-led wellness programs created by your care team
         </p>
 
         {/* Filter tabs */}
@@ -61,8 +61,18 @@ export default function ProgramsPage() {
 
       {/* Program list */}
       <section className="px-5 pt-5">
-        {loading && dbPrograms.length === 0 ? (
+        {loading ? (
           <p className="text-xs text-slate-400 font-semibold">Loading wellness programs...</p>
+        ) : filtered.length === 0 ? (
+          <div className="bg-white rounded-[32px] p-8 text-center border border-slate-200 shadow-xs space-y-3">
+            <div className="w-12 h-12 rounded-full bg-purple-50 text-[#5b21b6] mx-auto flex items-center justify-center">
+              <Sparkles className="w-6 h-6" />
+            </div>
+            <h3 className="text-base font-bold text-slate-800 font-playfair">No Admin Programs Found</h3>
+            <p className="text-xs text-slate-500 max-w-sm mx-auto">
+              No programs are currently published under this category. Check back soon for new admin programs!
+            </p>
+          </div>
         ) : (
           <div className="flex flex-col gap-4">
             {filtered.map((program) => (

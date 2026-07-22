@@ -20,6 +20,8 @@ import {
   Sparkles,
   ExternalLink,
   CheckCircle2,
+  Stethoscope,
+  Bot,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { apiFetch } from '@/lib/api';
@@ -56,6 +58,36 @@ export default function ChatPage() {
   const [sending, setSending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const openDataURL = (dataUrl: string, fileName: string = 'attachment') => {
+    try {
+      const parts = dataUrl.split(';base64,');
+      if (parts.length !== 2) {
+        window.open(dataUrl, '_blank');
+        return;
+      }
+      const contentType = parts[0].split(':')[1];
+      const raw = window.atob(parts[1]);
+      const rawLength = raw.length;
+      const uInt8Array = new Uint8Array(rawLength);
+      for (let i = 0; i < rawLength; ++i) {
+        uInt8Array[i] = raw.charCodeAt(i);
+      }
+      const blob = new Blob([uInt8Array], { type: contentType });
+      const url = URL.createObjectURL(blob);
+      
+      const w = window.open(url, '_blank');
+      if (!w) {
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        a.click();
+      }
+    } catch (e) {
+      console.error('Failed to open data URL:', e);
+      window.open(dataUrl, '_blank');
+    }
+  };
   const pollRef = useRef<NodeJS.Timeout | null>(null);
 
   // Booking Checks
@@ -74,6 +106,17 @@ export default function ChatPage() {
   const [rescheduleTime, setRescheduleTime] = useState('09:00');
   const [rescheduleSuccess, setRescheduleSuccess] = useState('');
 
+  // Reschedule Modal State (Patient & Doctor Chat)
+  const [showRescheduleModal, setShowRescheduleModal] = useState(false);
+  const [modalRescheduleDate, setModalRescheduleDate] = useState<string>(
+    new Date().toISOString().split('T')[0]
+  );
+  const [modalRescheduleSlots, setModalRescheduleSlots] = useState<{ time: string; isBooked: boolean }[]>([]);
+  const [loadingModalSlots, setLoadingModalSlots] = useState(false);
+  const [modalSelectedSlot, setModalSelectedSlot] = useState<string | null>(null);
+  const [sendingRescheduleReq, setSendingRescheduleReq] = useState(false);
+  const [acceptingRescheduleId, setAcceptingRescheduleId] = useState<string | null>(null);
+
   // Call state
   const [callActive, setCallActive] = useState(false);
   const [callType, setCallType] = useState<'voice' | 'video'>('voice');
@@ -84,10 +127,29 @@ export default function ChatPage() {
   const localStreamRef = useRef<MediaStream | null>(null);
   const peerRef = useRef<RTCPeerConnection | null>(null);
 
+  const isAiMode = otherUserId === 'ai' || otherUserId === '00000000-0000-0000-0000-0000000000a1';
+
   // Resolve conversation
   useEffect(() => {
     async function resolveConvo() {
       try {
+        if (isAiMode) {
+          setOtherUser({
+            id: 'ai',
+            full_name: 'AI Health Assistant',
+            avatar_url: '/images/logo_icon.png',
+            specialty: 'Educational AI Guide'
+          });
+          const res = await apiFetch('/chat/conversations', {
+            method: 'POST',
+            body: JSON.stringify({ recipientId: 'ai' })
+          });
+          const convo = res.conversation;
+          setRealConversationId(convo.id);
+          loadMessages(convo.id);
+          return;
+        }
+
         const res = await apiFetch('/chat/conversations', {
           method: 'POST',
           body: JSON.stringify({ recipientId: otherUserId })
@@ -110,7 +172,7 @@ export default function ChatPage() {
     if (profile && otherUserId) {
       resolveConvo();
     }
-  }, [otherUserId, profile]);
+  }, [otherUserId, profile, isAiMode]);
 
   // Load patient details if current user is doctor
   useEffect(() => {
@@ -149,10 +211,10 @@ export default function ChatPage() {
           .then(res => {
             const list = res.appointments || [];
             const booking = list.find(
-              (a: any) => (a.doctors?.users?.id === otherUserId || a.doctor_id === otherUserId) && ['pending', 'confirmed', 'rescheduled'].includes(a.status)
+              (a: any) => (a.doctors?.users?.id === otherUserId || a.doctor_id === otherUserId) && ['pending', 'confirmed', 'rescheduled', 'reschedule_requested'].includes(a.status)
             );
             setActiveBooking(booking);
-            setIsConfirmedBooking(booking?.status === 'confirmed');
+            setIsConfirmedBooking(['confirmed', 'rescheduled', 'reschedule_requested'].includes(booking?.status));
           })
           .catch(console.error);
       } else if (profile.role === 'doctor') {
@@ -160,15 +222,84 @@ export default function ChatPage() {
           .then(res => {
             const list = res.appointments || [];
             const booking = list.find(
-              (a: any) => a.patient_id === otherUserId && ['pending', 'confirmed', 'rescheduled'].includes(a.status)
+              (a: any) => a.patient_id === otherUserId && ['pending', 'confirmed', 'rescheduled', 'reschedule_requested'].includes(a.status)
             );
             setActiveBooking(booking);
-            setIsConfirmedBooking(booking?.status === 'confirmed');
+            setIsConfirmedBooking(['confirmed', 'rescheduled', 'reschedule_requested'].includes(booking?.status));
           })
           .catch(console.error);
       }
     }
   }, [profile, otherUserId]);
+
+  // Fetch slots for reschedule modal
+  useEffect(() => {
+    if (!showRescheduleModal) return;
+    const docId = activeBooking?.doctor_id || 'deepa-doc-id';
+    async function fetchModalSlots() {
+      try {
+        setLoadingModalSlots(true);
+        const res = await apiFetch(`/doctors/${docId}/slots?date=${modalRescheduleDate}`);
+        setModalRescheduleSlots(res.slots || []);
+      } catch (err) {
+        console.error('Failed to load slots for reschedule modal:', err);
+      } finally {
+        setLoadingModalSlots(false);
+      }
+    }
+    fetchModalSlots();
+  }, [showRescheduleModal, modalRescheduleDate, activeBooking]);
+
+  const handleSendRescheduleProposal = async () => {
+    if (!activeBooking?.id || !modalRescheduleDate || !modalSelectedSlot) return;
+    setSendingRescheduleReq(true);
+    try {
+      const res = await apiFetch(`/appointments/${activeBooking.id}/reschedule-request`, {
+        method: 'POST',
+        body: JSON.stringify({
+          new_date: modalRescheduleDate,
+          new_slot_time: modalSelectedSlot,
+        }),
+      });
+
+      if (res.success) {
+        setShowRescheduleModal(false);
+        setModalSelectedSlot(null);
+        if (realConversationId) await loadMessages(realConversationId);
+      } else {
+        alert(res.error || 'Failed to send reschedule request');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Failed to request reschedule');
+    } finally {
+      setSendingRescheduleReq(false);
+    }
+  };
+
+  const handleAcceptReschedule = async (apptId: string, newDate: string, newTime: string) => {
+    setAcceptingRescheduleId(apptId);
+    try {
+      const res = await apiFetch(`/appointments/${apptId}/reschedule-accept`, {
+        method: 'POST',
+        body: JSON.stringify({
+          new_date: newDate,
+          new_slot_time: newTime,
+        }),
+      });
+
+      if (res.success) {
+        if (realConversationId) await loadMessages(realConversationId);
+        setIsConfirmedBooking(true);
+        if (res.appointment) setActiveBooking(res.appointment);
+      } else {
+        alert(res.error || 'Failed to accept reschedule');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Failed to accept reschedule');
+    } finally {
+      setAcceptingRescheduleId(null);
+    }
+  };
 
   // Load messages
   const loadMessages = async (convoId: string) => {
@@ -223,18 +354,33 @@ export default function ChatPage() {
   }, []);
 
   const handleSend = async () => {
-    if (!input.trim() || !realConversationId) return;
+    if (!input.trim()) return;
     setSending(true);
+    const textToSend = input.trim();
+    setInput('');
+
     try {
-      await apiFetch('/chat/messages', {
-        method: 'POST',
-        body: JSON.stringify({
-          conversation_id: realConversationId,
-          content: input.trim(),
-        }),
-      });
-      setInput('');
-      await loadMessages(realConversationId);
+      if (isAiMode) {
+        // AI Health Assistant Endpoint
+        const res = await apiFetch('/chat/ai/message', {
+          method: 'POST',
+          body: JSON.stringify({ content: textToSend }),
+        });
+        if (res.conversationId) {
+          setRealConversationId(res.conversationId);
+          await loadMessages(res.conversationId);
+        }
+      } else {
+        if (!realConversationId) return;
+        await apiFetch('/chat/messages', {
+          method: 'POST',
+          body: JSON.stringify({
+            conversation_id: realConversationId,
+            content: textToSend,
+          }),
+        });
+        await loadMessages(realConversationId);
+      }
     } catch (err) {
       console.error('Failed to send message', err);
     } finally {
@@ -449,18 +595,31 @@ export default function ChatPage() {
           </p>
         </div>
 
-        {/* Action Buttons: Voice, Video calls, Patient Info Panel */}
+        {/* Action Buttons: Voice, Video calls, Reschedule, Patient Info Panel */}
         <div className="flex items-center gap-1">
+          {activeBooking && !isAiMode && (
+            <button
+              onClick={() => setShowRescheduleModal(true)}
+              title="Reschedule Consultation"
+              className="flex h-9 px-2.5 items-center gap-1 rounded-full text-[#5b21b6] hover:bg-pink-50 text-xs font-bold border border-pink-200 shadow-2xs"
+            >
+              <Calendar className="h-4 w-4" />
+              <span className="hidden sm:inline">Reschedule</span>
+            </button>
+          )}
+
           {isConfirmedBooking && (
             <>
               <button
                 onClick={() => startCall('voice')}
+                title="Voice Call"
                 className="flex h-9 w-9 items-center justify-center rounded-full text-bloom-600 hover:bg-bloom-50"
               >
                 <Phone className="h-4.5 w-4.5" />
               </button>
               <button
                 onClick={() => startCall('video')}
+                title="Video Call"
                 className="flex h-9 w-9 items-center justify-center rounded-full text-bloom-600 hover:bg-bloom-50"
               >
                 <Video className="h-4.5 w-4.5" />
@@ -527,21 +686,77 @@ export default function ChatPage() {
                             }}
                           />
                         ) : (
-                          <a
-                            href={msg.attachment_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                          <button
+                            type="button"
+                            onClick={() => openDataURL(msg.attachment_url!, msg.content || 'attachment')}
                             className={cn(
-                              'flex items-center gap-1.5 text-xs font-semibold underline',
-                              isMe ? 'text-white/90' : 'text-bloom-600'
+                              'flex items-center gap-1.5 text-xs font-semibold underline bg-transparent border-0 cursor-pointer p-0 align-baseline',
+                              isMe ? 'text-white/90 hover:text-white' : 'text-bloom-600 hover:text-[#5b21b6]'
                             )}
                           >
                             <Paperclip className="h-3.5 w-3.5" /> View Attachment
-                          </a>
+                          </button>
                         )}
                       </div>
                     )}
-                    {msg.content && <span>{msg.content}</span>}
+                    {msg.content && msg.content.includes('[RESCHEDULE_PROPOSAL]') ? (
+                      (() => {
+                        const matchDate = msg.content.match(/Date:\s*([^(]+)\(([^)]+)\)/);
+                        const matchTime = msg.content.match(/Time:\s*([^\s|]+)/);
+                        const matchAppt = msg.content.match(/ApptID:\s*([^\s|]+)/);
+
+                        const formattedDateStr = matchDate ? matchDate[1].trim() : 'New Date';
+                        const rawDateStr = matchDate ? matchDate[2].trim() : '';
+                        const slotTimeStr = matchTime ? matchTime[1].trim() : '';
+                        const apptIdStr = matchAppt ? matchAppt[1].trim() : '';
+
+                        return (
+                          <div className="bg-amber-50/95 border border-amber-200 rounded-xl p-3 my-1 text-slate-800 shadow-xs">
+                            <div className="flex items-center gap-1.5 text-amber-900 font-bold text-xs mb-1">
+                              <Calendar className="w-4 h-4 text-amber-700 shrink-0" />
+                              <span>Consultation Reschedule Proposal</span>
+                            </div>
+                            <p className="text-xs text-slate-700 font-medium leading-relaxed">
+                              Proposed Date: <span className="font-extrabold text-amber-900">{formattedDateStr}</span> at <span className="font-extrabold text-amber-900">{slotTimeStr}</span>
+                            </p>
+                            {!isMe ? (
+                              <button
+                                onClick={() => handleAcceptReschedule(apptIdStr, rawDateStr, slotTimeStr)}
+                                disabled={acceptingRescheduleId === apptIdStr}
+                                className="mt-2.5 w-full py-2 px-3 bg-[#5b21b6] hover:bg-[#4c1d95] text-white font-extrabold text-xs rounded-xl shadow-sm flex items-center justify-center gap-1.5 transition-all active:scale-95 disabled:opacity-50"
+                              >
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                {acceptingRescheduleId === apptIdStr ? 'Confirming Schedule...' : 'Agree & Confirm Reschedule'}
+                              </button>
+                            ) : (
+                              <p className="text-[10px] text-amber-700 font-semibold italic mt-1.5">
+                                Waiting for confirmation from {profile?.role === 'doctor' ? 'patient' : 'doctor'} in chat...
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })()
+                    ) : msg.content ? (
+                      <div className="whitespace-pre-line">
+                        {msg.content}
+                      </div>
+                    ) : null}
+
+                    {/* Book consultation prompt for AI Assistant responses */}
+                    {(isAiMode || msg.sender_id === '00000000-0000-0000-0000-0000000000a1') && !isMe && (
+                      <div className="mt-3 pt-2.5 border-t border-slate-100 flex flex-col gap-1.5">
+                        <p className="text-[10px] text-slate-500 font-semibold">Need official personalized medical advice from Dr. Deepa Madhavan?</p>
+                        <button
+                          type="button"
+                          onClick={() => router.push('/consult')}
+                          className="w-full py-2 px-3 bg-[#5b21b6] hover:bg-[#4c1d95] text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 shadow-xs transition-transform active:scale-95"
+                        >
+                          <Stethoscope className="w-3.5 h-3.5" />
+                          Book a Consultation with Dr. Deepa Madhavan
+                        </button>
+                      </div>
+                    )}
+
                     <span className={cn('mt-1 block text-[9px] text-right', isMe ? 'text-white/75' : 'text-slate-400')}>
                       {new Date(msg.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                     </span>
@@ -745,6 +960,89 @@ export default function ChatPage() {
           </div>
         )}
       </div>
+
+      {/* Reschedule Consultation Modal */}
+      {showRescheduleModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-[28px] p-6 max-w-md w-full shadow-2xl animate-in zoom-in-95 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <Calendar className="w-5 h-5 text-[#5b21b6]" />
+                <h3 className="font-bold text-slate-800 text-base">Request Consultation Reschedule</h3>
+              </div>
+              <button
+                onClick={() => setShowRescheduleModal(false)}
+                className="h-8 w-8 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-400"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-500 font-medium leading-relaxed">
+              Select a new date and available time slot. A reschedule proposal will be sent directly into chat for mutual agreement.
+            </p>
+
+            {/* Date Picker */}
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Select New Date</label>
+              <input
+                type="date"
+                value={modalRescheduleDate}
+                onChange={(e) => setModalRescheduleDate(e.target.value)}
+                min={new Date().toISOString().split('T')[0]}
+                className="w-full h-11 rounded-xl border border-slate-200 px-3 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-bloom-300 focus:outline-none"
+              />
+            </div>
+
+            {/* Slots Grid */}
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1.5">Select Available Time Slot</label>
+              {loadingModalSlots ? (
+                <p className="text-xs text-slate-400 animate-pulse text-center py-4">Checking slots availability...</p>
+              ) : modalRescheduleSlots.length === 0 ? (
+                <p className="text-xs text-amber-700 bg-amber-50 p-3 rounded-xl text-center font-semibold border border-amber-100">No available slots on this date.</p>
+              ) : (
+                <div className="grid grid-cols-3 gap-2 max-h-40 overflow-y-auto p-1 scrollbar-hide">
+                  {modalRescheduleSlots.map((slot) => (
+                    <button
+                      key={slot.time}
+                      disabled={slot.isBooked}
+                      onClick={() => setModalSelectedSlot(slot.time)}
+                      className={cn(
+                        'py-2 px-2.5 rounded-xl text-xs font-bold border transition-all text-center',
+                        slot.isBooked
+                          ? 'bg-slate-100 text-slate-400 border-slate-200 line-through cursor-not-allowed opacity-50'
+                          : modalSelectedSlot === slot.time
+                          ? 'bg-[#5b21b6] text-white border-[#5b21b6] shadow-sm'
+                          : 'bg-white text-slate-700 border-slate-200 hover:border-[#5b21b6]'
+                      )}
+                    >
+                      {slot.time}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-2 pt-2">
+              <button
+                onClick={() => setShowRescheduleModal(false)}
+                className="flex-1 h-11 border border-slate-200 rounded-full text-xs font-bold text-slate-600 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                disabled={!modalSelectedSlot || sendingRescheduleReq}
+                onClick={handleSendRescheduleProposal}
+                className="flex-1 h-11 bg-[#5b21b6] hover:bg-[#4c1d95] text-white font-extrabold rounded-full text-xs shadow-md disabled:opacity-50 flex items-center justify-center gap-1.5"
+              >
+                {sendingRescheduleReq ? 'Sending Request...' : 'Send Reschedule Proposal'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -2,14 +2,14 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Stethoscope, HeartPulse, Sparkles, User, Users, BarChart3, FileText, LayoutDashboard } from 'lucide-react';
+import { Home, Stethoscope, HeartPulse, Sparkles, User, Users, BarChart3, FileText, LayoutDashboard, Bot, Utensils } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/components/auth-provider';
 
 const patientNav = [
   { id: 'home',     label: 'Home',     icon: Home,        href: '/home' },
   { id: 'consult',  label: 'Consult',  icon: Stethoscope, href: '/consult' },
-  { id: 'programs', label: 'Programs', icon: HeartPulse,  href: '/programs' },
+  { id: 'diet-plan', label: 'Diet Plan', icon: Utensils,  href: '/diet-plan' },
   { id: 'wellness', label: 'Wellness', icon: Sparkles,    href: '/wellness' },
   { id: 'profile',  label: 'Profile',  icon: User,        href: '/profile' },
 ];

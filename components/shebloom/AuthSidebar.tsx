@@ -2,7 +2,7 @@ import React from 'react';
 
 export function AuthSidebar({ className = '' }: { className?: string }) {
   return (
-    <div className={`hidden md:flex relative bg-gradient-to-b from-[#D4C2F4] to-[#EFEBFA] p-12 flex-col justify-between overflow-hidden h-full border-r border-[#E9D5FF]/30 ${className}`}>
+    <div className={`hidden lg:flex relative bg-gradient-to-b from-[#D4C2F4] to-[#EFEBFA] p-12 flex-col justify-between overflow-hidden h-full border-r border-[#E9D5FF]/30 ${className}`}>
       
       {/* Full-bleed background illustration (Direct child of parent to span full width and height) */}
       {/* eslint-disable-next-line @next/next/no-img-element */}

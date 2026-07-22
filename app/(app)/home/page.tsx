@@ -23,12 +23,16 @@ import {
   User,
   AlertCircle,
   CheckCircle2,
+  Bot,
   X,
   Weight,
   Ruler,
   Droplets,
   FileText,
   ExternalLink,
+  Apple,
+  Edit3,
+  Save,
 } from 'lucide-react';
 import { GradientButton } from '@/components/shebloom';
 import { cn } from '@/lib/utils';
@@ -57,6 +61,8 @@ const timesList = Array.from({ length: 25 }).map((_, i) => {
   return `${hStr}:${m}`;
 });
 
+import { VideoRoomModal } from '@/components/shebloom/VideoRoomModal';
+
 export default function HomePage() {
   const router = useRouter();
   const { profile, user } = useAuth();
@@ -67,6 +73,10 @@ export default function HomePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [greeting, setGreeting] = useState('Welcome');
 
+  // Video Room Modal State
+  const [showVideoModal, setShowVideoModal] = useState(false);
+  const [selectedVideoRoom, setSelectedVideoRoom] = useState<any>(null);
+
   // Doctor Dashboard additional state
   const [previousAppointments, setPreviousAppointments] = useState<any[]>([]);
   const [activeDocTab, setActiveDocTab] = useState<'upcoming' | 'previous' | 'patients' | 'availability'>('upcoming');
@@ -74,6 +84,20 @@ export default function HomePage() {
   const [selectedPatientProfile, setSelectedPatientProfile] = useState<any>(null);
   const [selectedPatientRecords, setSelectedPatientRecords] = useState<any[]>([]);
   const [loadingPatientData, setLoadingPatientData] = useState(false);
+  const [selectedPatientAppointment, setSelectedPatientAppointment] = useState<any>(null);
+
+  // Doctor Diet Plan Editor State
+  const [showDietEditor, setShowDietEditor] = useState(false);
+  const [existingDietPlan, setExistingDietPlan] = useState<any>(null);
+  const [dietPlanTitle, setDietPlanTitle] = useState('');
+  const [dietPlanNotes, setDietPlanNotes] = useState('');
+  const [dietPlanDetails, setDietPlanDetails] = useState('');
+  const [savingDiet, setSavingDiet] = useState(false);
+  const [dietSaveSuccess, setDietSaveSuccess] = useState('');
+
+  // Doctor Video Call state
+  const [showDoctorVideoModal, setShowDoctorVideoModal] = useState(false);
+  const [doctorVideoRoom, setDoctorVideoRoom] = useState<any>(null);
 
   // Doctor Availability Editor State
   const [availabilitySlots, setAvailabilitySlots] = useState<any[]>([]);
@@ -99,11 +123,18 @@ export default function HomePage() {
     setGreeting(capitalizedName ? `${base}, ${capitalizedName} 👋` : base);
   }, [profile, user]);
 
-  const handleOpenPatientDrawer = async (patientId: string) => {
+  const handleOpenPatientDrawer = async (patientId: string, appointment?: any) => {
     setSelectedPatientId(patientId);
+    setSelectedPatientAppointment(appointment || null);
     setLoadingPatientData(true);
     setSelectedPatientProfile(null);
     setSelectedPatientRecords([]);
+    setShowDietEditor(false);
+    setDietPlanTitle('');
+    setDietPlanNotes('');
+    setDietPlanDetails('');
+    setExistingDietPlan(null);
+    setDietSaveSuccess('');
     
     try {
       const [profileRes, recordsRes] = await Promise.all([
@@ -112,10 +143,70 @@ export default function HomePage() {
       ]);
       setSelectedPatientProfile(profileRes.patient);
       setSelectedPatientRecords(recordsRes.records || []);
+      
+      // If there's an appointment, check for existing diet plan
+      if (appointment?.id) {
+        try {
+          const dietRes = await apiFetch(`/diet/appointment/${appointment.id}`);
+          if (dietRes.diet_plan) {
+            setExistingDietPlan(dietRes.diet_plan);
+            setDietPlanTitle(dietRes.diet_plan.title || '');
+            setDietPlanNotes(dietRes.diet_plan.notes || '');
+            setDietPlanDetails(
+              typeof dietRes.diet_plan.plan_details === 'string'
+                ? dietRes.diet_plan.plan_details
+                : JSON.stringify(dietRes.diet_plan.plan_details, null, 2)
+            );
+          }
+        } catch (e) {
+          // no diet plan yet, that's fine
+        }
+      }
     } catch (err) {
       console.error('Failed to load patient records', err);
     } finally {
       setLoadingPatientData(false);
+    }
+  };
+
+  const handleSaveDietPlan = async () => {
+    if (!selectedPatientId || !dietPlanTitle.trim()) return;
+    setSavingDiet(true);
+    setDietSaveSuccess('');
+    try {
+      let parsedDetails: any = {};
+      try { parsedDetails = JSON.parse(dietPlanDetails); } catch { parsedDetails = { notes: dietPlanDetails }; }
+      
+      if (existingDietPlan?.id && !existingDietPlan.id.startsWith('diet-')) {
+        // Update existing plan
+        await apiFetch(`/diet/${existingDietPlan.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            title: dietPlanTitle,
+            notes: dietPlanNotes,
+            plan_details: parsedDetails,
+          }),
+        });
+      } else {
+        // Create new plan
+        const res = await apiFetch('/diet/attach', {
+          method: 'POST',
+          body: JSON.stringify({
+            appointment_id: selectedPatientAppointment?.id || null,
+            patient_id: selectedPatientId,
+            title: dietPlanTitle,
+            notes: dietPlanNotes,
+            plan_details: parsedDetails,
+          }),
+        });
+        if (res.diet_plan) setExistingDietPlan(res.diet_plan);
+      }
+      setDietSaveSuccess('Diet plan saved and patient notified!');
+      setTimeout(() => setDietSaveSuccess(''), 4000);
+    } catch (err: any) {
+      alert(err.message || 'Failed to save diet plan');
+    } finally {
+      setSavingDiet(false);
     }
   };
 
@@ -145,24 +236,58 @@ export default function HomePage() {
         const list = apptsRes.appointments || [];
         
         if (profile?.role === 'doctor') {
-          const todayStr = new Date().toISOString().split('T')[0];
+          const now = new Date();
+          const todayStr = now.toLocaleDateString('en-CA');
+          const nowMinutes = now.getHours() * 60 + now.getMinutes();
           
-          const upcoming = list.filter((a: any) => 
-            (a.status === 'confirmed' || a.status === 'pending' || a.status === 'rescheduled') && 
-            a.appointment_date >= todayStr
-          );
+          const upcoming = list.filter((a: any) => {
+            const isFutureDate = a.appointment_date > todayStr;
+            const isToday = a.appointment_date === todayStr;
+            let isFutureSlot = true;
+            if (isToday) {
+              const [h, m] = a.slot_time.split(':').map(Number);
+              const slotMinutes = h * 60 + (m || 0);
+              isFutureSlot = slotMinutes > nowMinutes;
+            }
+            
+            return (a.status === 'confirmed' || a.status === 'pending' || a.status === 'rescheduled') && 
+              (isFutureDate || (isToday && isFutureSlot));
+          });
           upcoming.sort((a: any, b: any) => a.appointment_date.localeCompare(b.appointment_date));
           setUpcomingAppointments(upcoming);
           
-          const previous = list.filter((a: any) => 
-            a.status === 'completed' || a.status === 'cancelled' || 
-            ((a.status === 'confirmed' || a.status === 'pending' || a.status === 'rescheduled') && a.appointment_date < todayStr)
-          );
+          const previous = list.filter((a: any) => {
+            const isPastDate = a.appointment_date < todayStr;
+            const isToday = a.appointment_date === todayStr;
+            let isPastSlot = false;
+            if (isToday) {
+              const [h, m] = a.slot_time.split(':').map(Number);
+              const slotMinutes = h * 60 + (m || 0);
+              isPastSlot = slotMinutes <= nowMinutes;
+            }
+            return a.status === 'completed' || a.status === 'cancelled' || 
+              ((a.status === 'confirmed' || a.status === 'pending' || a.status === 'rescheduled') && (isPastDate || (isToday && isPastSlot)));
+          });
           setPreviousAppointments(previous);
         } else {
-          setUpcomingAppointments(list);
-          if (list.length > 0) {
-            setUpcomingAppointment(list[0]);
+          const now = new Date();
+          const todayStr = now.toLocaleDateString('en-CA');
+          const nowMinutes = now.getHours() * 60 + now.getMinutes();
+
+          const activeList = list.filter((a: any) => {
+            if (a.status === 'completed' || a.status === 'cancelled') return false;
+            if (a.appointment_date < todayStr) return false;
+            if (a.appointment_date === todayStr) {
+              const [h, m] = a.slot_time.split(':').map(Number);
+              const slotMinutes = h * 60 + (m || 0);
+              return slotMinutes > nowMinutes;
+            }
+            return true;
+          });
+
+          setUpcomingAppointments(activeList);
+          if (activeList.length > 0) {
+            setUpcomingAppointment(activeList[0]);
           } else {
             setUpcomingAppointment(null);
           }
@@ -248,7 +373,9 @@ export default function HomePage() {
 
   // ─── DOCTOR HOME VIEW ──────────────────────────────────────────────────────────
   if (profile.role === 'doctor') {
-    const isApproved = profile.doctor_application_status === 'approved';
+    // isApproved: role==='doctor' means admin already approved (sets role in DB).
+    // Also accept explicit 'approved' status as a fallback.
+    const isApproved = profile.role === 'doctor' || profile.doctor_application_status === 'approved';
 
     return (
       <div className="pb-24">
@@ -362,18 +489,34 @@ export default function HomePage() {
                         </span>
                       </div>
                     </div>
-                    <div className="flex flex-col gap-2 shrink-0 self-center">
+                    <div className="flex flex-col gap-1.5 shrink-0 self-center">
                       <button
-                        onClick={() => handleOpenPatientDrawer(appt.patient_id)}
+                        onClick={() => handleOpenPatientDrawer(appt.patient_id, appt)}
                         className="px-2.5 py-1.5 rounded-xl border border-bloom-100 text-bloom-600 font-bold text-[9px] hover:bg-bloom-50 bg-white"
                       >
-                        Reports
+                        Case File
                       </button>
                       <button
                         onClick={() => router.push(`/chat/${appt.patient_id}`)}
-                        className="h-9 w-9 rounded-full border border-bloom-200 bg-white flex items-center justify-center text-bloom-600 hover:bg-bloom-50 shadow-sm mx-auto"
+                        className="h-8 w-8 rounded-full border border-bloom-200 bg-white flex items-center justify-center text-bloom-600 hover:bg-bloom-50 shadow-sm mx-auto"
                       >
-                        <MessageCircle className="h-4.5 w-4.5" />
+                        <MessageCircle className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => {
+                          setDoctorVideoRoom({
+                            url: appt.video_room_url || `https://shebloom.daily.co/consult-${appt.id?.substring(0, 8)}`,
+                            patientName: appt.users?.full_name || 'Patient',
+                            patientId: appt.patient_id,
+                            appointmentId: appt.id,
+                            date: appt.appointment_date,
+                            slot: appt.slot_time,
+                          });
+                          setShowDoctorVideoModal(true);
+                        }}
+                        className="h-8 w-8 rounded-full bg-bloom-600 flex items-center justify-center text-white shadow-md hover:bg-bloom-700 mx-auto"
+                      >
+                        <Video className="h-3.5 w-3.5" />
                       </button>
                     </div>
                   </div>
@@ -587,12 +730,12 @@ export default function HomePage() {
         {/* Patient Profile Drawer Modal */}
         {selectedPatientId && (
           <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="bg-white w-full max-w-[420px] rounded-[32px] shadow-2xl border border-bloom-100 flex flex-col max-h-[90vh] overflow-hidden animate-in zoom-in duration-200">
+            <div className="bg-white w-full max-w-[440px] rounded-[32px] shadow-2xl border border-bloom-100 flex flex-col max-h-[92vh] overflow-hidden animate-in zoom-in duration-200">
               {/* Drawer Header */}
               <div className="flex items-center justify-between px-6 py-4 border-b border-bloom-50 bg-slate-50 shrink-0">
                 <div>
                   <h3 className="text-sm font-extrabold text-slate-800">Patient Case File</h3>
-                  <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider mt-0.5">Medical History & Vitals</p>
+                  <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider mt-0.5">Medical History, Vitals & Diet Plan</p>
                 </div>
                 <button
                   onClick={() => setSelectedPatientId(null)}
@@ -693,6 +836,85 @@ export default function HomePage() {
                         <p className="text-xs text-slate-400 text-center py-6 bg-slate-50 border border-slate-100 rounded-2xl font-semibold">No medical records uploaded by this patient.</p>
                       )}
                     </div>
+
+                    {/* ─── DIET PLAN EDITOR ─── */}
+                    <div className="pt-2 border-t border-slate-100">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <Apple className="h-4 w-4 text-bloom-600" />
+                          <p className="text-[11px] font-bold text-slate-700 uppercase tracking-widest">
+                            {existingDietPlan ? 'Edit Diet Plan' : 'Assign Diet Plan'}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => setShowDietEditor(!showDietEditor)}
+                          className="text-[10px] font-bold text-bloom-600 hover:text-bloom-700 flex items-center gap-1 bg-bloom-50 px-2.5 py-1 rounded-lg border border-bloom-100"
+                        >
+                          <Edit3 className="h-3 w-3" />
+                          {showDietEditor ? 'Collapse' : (existingDietPlan ? 'Edit' : 'Create')}
+                        </button>
+                      </div>
+
+                      {existingDietPlan && !showDietEditor && (
+                        <div className="p-3 bg-green-50 border border-green-100 rounded-2xl">
+                          <div className="flex items-center gap-2 mb-1">
+                            <CheckCircle2 className="h-4 w-4 text-green-600" />
+                            <span className="text-xs font-bold text-green-800">Diet Plan Assigned</span>
+                          </div>
+                          <p className="text-[11px] font-semibold text-green-700 truncate">{existingDietPlan.title}</p>
+                          {existingDietPlan.notes && <p className="text-[10px] text-green-600 mt-1">{existingDietPlan.notes}</p>}
+                        </div>
+                      )}
+
+                      {showDietEditor && (
+                        <div className="space-y-3 bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                          <div>
+                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Plan Title *</label>
+                            <input
+                              type="text"
+                              value={dietPlanTitle}
+                              onChange={e => setDietPlanTitle(e.target.value)}
+                              placeholder="e.g. PCOS Anti-Inflammatory Protocol"
+                              className="w-full h-9 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-bloom-200 focus:border-bloom-400"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Plan Details / Guidelines</label>
+                            <textarea
+                              rows={4}
+                              value={dietPlanDetails}
+                              onChange={e => setDietPlanDetails(e.target.value)}
+                              placeholder="Describe the diet guidelines, meals and schedule..."
+                              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-bloom-200 focus:border-bloom-400 resize-none"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Doctor Notes (visible to patient)</label>
+                            <textarea
+                              rows={2}
+                              value={dietPlanNotes}
+                              onChange={e => setDietPlanNotes(e.target.value)}
+                              placeholder="Additional notes for the patient..."
+                              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-bloom-200 focus:border-bloom-400 resize-none"
+                            />
+                          </div>
+                          {dietSaveSuccess && (
+                            <div className="flex items-center gap-2 text-xs font-semibold text-green-700 bg-green-50 p-2.5 rounded-xl border border-green-100">
+                              <CheckCircle2 className="h-4 w-4 text-green-600" />
+                              {dietSaveSuccess}
+                            </div>
+                          )}
+                          <button
+                            onClick={handleSaveDietPlan}
+                            disabled={savingDiet || !dietPlanTitle.trim()}
+                            className="w-full h-10 bg-bloom-gradient text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 shadow-bloom-btn transition active:scale-95 disabled:opacity-50"
+                          >
+                            <Save className="h-4 w-4" />
+                            {savingDiet ? 'Saving & Notifying Patient...' : existingDietPlan ? 'Update Diet Plan' : 'Assign Diet Plan to Patient'}
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </>
                 ) : (
                   <p className="text-xs text-slate-400 text-center py-6">Patient details could not be loaded.</p>
@@ -704,6 +926,21 @@ export default function HomePage() {
               </div>
             </div>
           </div>
+        )}
+
+        {/* Doctor Video Room Modal */}
+        {doctorVideoRoom && (
+          <VideoRoomModal
+            isOpen={showDoctorVideoModal}
+            onClose={() => setShowDoctorVideoModal(false)}
+            roomUrl={doctorVideoRoom.url}
+            patientName={doctorVideoRoom.patientName}
+            doctorName={profile?.full_name || 'Dr. Deepa Madhavan'}
+            appointmentDate={doctorVideoRoom.date}
+            slotTime={doctorVideoRoom.slot}
+            patientId={doctorVideoRoom.patientId}
+            appointmentId={doctorVideoRoom.appointmentId}
+          />
         )}
       </div>
     );
@@ -736,8 +973,38 @@ export default function HomePage() {
         </button>
       </header>
 
+      {/* AI Health Assistant Hero Banner */}
+      <section className="px-5 pt-4">
+        <div
+          onClick={() => router.push('/chat/ai')}
+          className="bg-gradient-to-r from-[#5b21b6] via-[#6d28d9] to-[#7c3aed] text-white rounded-3xl p-5 shadow-lg relative overflow-hidden cursor-pointer hover:scale-[1.01] transition-all group border border-purple-400/30"
+        >
+          <div className="flex items-center justify-between relative z-10">
+            <div className="flex items-center gap-3.5">
+              <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center text-white border border-white/30 shrink-0">
+                <Bot className="w-7 h-7" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base font-bold font-playfair">AI Health Assistant</h3>
+                  <span className="text-[9px] font-black uppercase bg-pink-500 text-white px-2 py-0.5 rounded-full tracking-wider">
+                    24/7 AI
+                  </span>
+                </div>
+                <p className="text-xs text-purple-100 font-medium mt-0.5">
+                  Instant answers for cycle, PCOS & menstrual health
+                </p>
+              </div>
+            </div>
+            <div className="w-8 h-8 rounded-full bg-white/10 group-hover:bg-white/25 flex items-center justify-center transition-colors shrink-0">
+              <ChevronRight className="w-5 h-5 text-white" />
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Dedicated Upcoming Consultation Section */}
-      <section className="px-5 pt-6 pb-2">
+      <section className="px-5 pt-5 pb-2">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-bold text-slate-800">Upcoming Consultation</h2>
           {upcomingAppointment && (
@@ -781,17 +1048,25 @@ export default function HomePage() {
             </div>
             <div className="mt-4 flex gap-2.5">
               <button
-                onClick={() => router.push(`/chat/${upcomingAppointment.doctors?.users?.id || upcomingAppointment.doctor_id}`)}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-white/15 py-2.5 text-xs font-bold backdrop-blur-sm transition hover:bg-white/25"
+                onClick={() => {
+                  setSelectedVideoRoom({
+                    url: upcomingAppointment.video_room_url || `https://shebloom.daily.co/consult-${upcomingAppointment.id?.substring(0, 8)}`,
+                    doctorName: upcomingAppointment.doctors?.users?.full_name || 'Dr. Deepa Madhavan',
+                    date: upcomingAppointment.appointment_date,
+                    slot: upcomingAppointment.slot_time,
+                  });
+                  setShowVideoModal(true);
+                }}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-white text-bloom-700 font-extrabold py-2.5 text-xs shadow-md transition hover:bg-white/90 active:scale-95"
               >
-                <Video className="h-4 w-4" />
-                Join Call
+                <Video className="h-4 w-4 text-bloom-700" />
+                Join Video Call
               </button>
               <button
-                onClick={() => router.push(`/consult/${upcomingAppointment.doctor_id}`)}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-white px-4 py-2.5 text-xs font-bold text-bloom-700 transition hover:bg-white/90"
+                onClick={() => router.push(`/chat/${upcomingAppointment.doctors?.users?.id || upcomingAppointment.doctor_id}`)}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-white/15 py-2.5 text-xs font-bold text-white backdrop-blur-sm transition hover:bg-white/25"
               >
-                View Details
+                Open Chat
               </button>
             </div>
           </div>
@@ -930,6 +1205,18 @@ export default function HomePage() {
           </div>
         </div>
       </section>
+
+      {/* Video Room Modal */}
+      {selectedVideoRoom && (
+        <VideoRoomModal
+          isOpen={showVideoModal}
+          onClose={() => setShowVideoModal(false)}
+          roomUrl={selectedVideoRoom.url}
+          doctorName={selectedVideoRoom.doctorName}
+          appointmentDate={selectedVideoRoom.date}
+          slotTime={selectedVideoRoom.slot}
+        />
+      )}
     </div>
   );
 }

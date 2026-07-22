@@ -74,13 +74,13 @@ export default function SignupPage() {
       if (signInError) throw signInError;
 
       await refreshProfile();
-      router.push('/onboarding');
+      router.push('/home');
     } catch (err: any) {
       let friendlyError = 'Oops, something went wrong on our end. Please try again in a moment.';
       const msg = err.message || '';
       
       if (msg.includes('already') || msg.includes('exists')) {
-        friendlyError = 'An account with this email already exists. Try logging in instead!';
+        friendlyError = 'You already have an account — please sign in instead';
       } else if (msg.includes('Password should be at least')) {
         friendlyError = 'Your password is a bit too short. It needs to be at least 6 characters long.';
       } else if (msg.includes('rate limit')) {
@@ -111,8 +111,17 @@ export default function SignupPage() {
 
         <>
         {error && (
-          <div className="mb-6 rounded-2xl bg-red-50 p-4 text-sm leading-relaxed text-red-600 border border-red-100 shadow-sm">
-            {error}
+          <div className="mb-6 rounded-2xl bg-red-50 p-4 text-sm leading-relaxed text-red-600 border border-red-100 shadow-sm flex flex-col gap-2">
+            <span>{error}</span>
+            {error.includes('already have an account') && (
+              <button
+                type="button"
+                onClick={() => router.push(`/login?email=${encodeURIComponent(email)}`)}
+                className="self-start text-xs font-extrabold text-red-700 bg-red-100 px-3 py-1.5 rounded-full hover:bg-red-200 transition-colors mt-1"
+              >
+                Go to Sign In →
+              </button>
+            )}
           </div>
         )}
 

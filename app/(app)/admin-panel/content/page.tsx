@@ -119,15 +119,27 @@ export default function AdminContentPage() {
   const handleCreateSession = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      let formattedDate = null;
+      if (newSession.type === 'live' && newSession.scheduled_at) {
+        const d = new Date(newSession.scheduled_at);
+        if (!isNaN(d.getTime())) {
+          formattedDate = d.toISOString();
+        }
+      }
+
       const payload = {
         ...newSession,
-        scheduled_at: newSession.type === 'live' && newSession.scheduled_at ? new Date(newSession.scheduled_at).toISOString() : null,
+        scheduled_at: formattedDate,
       };
+
       const res = await apiFetch('/admin/wellness-sessions', {
         method: 'POST',
         body: JSON.stringify(payload),
       });
-      setSessions([res.session, ...sessions]);
+
+      if (res.session) {
+        setSessions([res.session, ...sessions]);
+      }
       setShowSessionForm(false);
       setNewSession({
         title: '',
@@ -137,8 +149,44 @@ export default function AdminContentPage() {
         category: 'Fertility',
         scheduled_at: '',
       });
+    } catch (err: any) {
+      alert(`Failed to create session: ${err?.message || 'Please check form fields'}`);
+    }
+  };
+
+  const handleEditProgram = async (program: any) => {
+    const newTitle = prompt('Edit Program Title:', program.title);
+    if (!newTitle || !newTitle.trim()) return;
+    const newDesc = prompt('Edit Description:', program.description || '') || program.description;
+    
+    try {
+      const res = await apiFetch(`/admin/programs/${program.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ title: newTitle.trim(), description: newDesc.trim() }),
+      });
+      if (res.program) {
+        setPrograms(prev => prev.map(p => p.id === program.id ? { ...p, ...res.program } : p));
+      }
     } catch (err) {
-      alert('Failed to create wellness session');
+      alert('Failed to update program');
+    }
+  };
+
+  const handleEditSession = async (session: any) => {
+    const newTitle = prompt('Edit Session Title:', session.title);
+    if (!newTitle || !newTitle.trim()) return;
+    const newSubtitle = prompt('Edit Subtitle / Description:', session.subtitle || '') || session.subtitle;
+    
+    try {
+      const res = await apiFetch(`/admin/wellness-sessions/${session.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ title: newTitle.trim(), subtitle: newSubtitle.trim() }),
+      });
+      if (res.session) {
+        setSessions(prev => prev.map(s => s.id === session.id ? { ...s, ...res.session } : s));
+      }
+    } catch (err) {
+      alert('Failed to update session');
     }
   };
 
@@ -338,12 +386,22 @@ export default function AdminContentPage() {
                   <p className="text-[10px] text-bloom-600 font-semibold mb-1">{prog.category} · {prog.duration_weeks} Weeks</p>
                   <p className="text-xs text-slate-500 line-clamp-2">{prog.description}</p>
                 </div>
-                <button
-                  onClick={() => handleDeleteProgram(prog.id)}
-                  className="h-8 w-8 rounded-lg flex items-center justify-center text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors shrink-0"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    onClick={() => handleEditProgram(prog)}
+                    className="h-8 w-8 rounded-lg flex items-center justify-center text-slate-400 hover:bg-purple-50 hover:text-[#5b21b6] transition-colors"
+                    title="Edit Program"
+                  >
+                    <Edit2 className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={() => handleDeleteProgram(prog.id)}
+                    className="h-8 w-8 rounded-lg flex items-center justify-center text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors"
+                    title="Delete Program"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
             ))}
             {programs.length === 0 && !showProgramForm && (
@@ -369,7 +427,7 @@ export default function AdminContentPage() {
                   <label className="text-[10px] font-semibold text-slate-500 mb-1 block">Session Title</label>
                   <input
                     type="text"
-                    placeholder="e.g. PCOS Breathing Exercises"
+                    placeholder="e.g. Class 1: Diaphragmatic Breathing for Pelvic Pain"
                     required
                     value={newSession.title}
                     onChange={e => setNewSession({ ...newSession, title: e.target.value })}
@@ -417,27 +475,42 @@ export default function AdminContentPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-[10px] font-semibold text-slate-500 mb-1 block">Session Type</label>
-                    <select
-                      value={newSession.type}
-                      onChange={e => setNewSession({ ...newSession, type: e.target.value as any })}
-                      className="w-full h-10 px-3 rounded-xl border border-slate-200 text-sm outline-none bg-white font-bold"
-                    >
-                      <option value="live">Live Session</option>
-                      <option value="self-paced">Self-Paced</option>
-                    </select>
-                  </div>
-                  {newSession.type === 'live' && (
-                    <div>
-                      <label className="text-[10px] font-semibold text-slate-500 mb-1 block">Scheduled Date & Time</label>
-                      <input
-                        type="datetime-local"
-                        required
-                        value={newSession.scheduled_at}
-                        onChange={e => setNewSession({ ...newSession, scheduled_at: e.target.value })}
-                        className="w-full h-10 px-3 rounded-xl border border-slate-200 text-sm outline-none font-bold"
+                {/* DEDICATED PROMINENT VIDEO UPLOAD FIELD */}
+                <div className="p-3.5 bg-purple-50 rounded-2xl border border-purple-200 text-center space-y-2">
+                  <label className="block text-[10px] font-extrabold text-[#5b21b6] uppercase tracking-wider">
+                    Upload Prerecorded Session Video (.mp4 / .mov)
+                  </label>
+                  <input
+                    type="file"
+                    id="sessionVideoFile"
+                    accept="video/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        const objectUrl = URL.createObjectURL(file);
+                        setNewSession({ ...newSession, video_url: objectUrl } as any);
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => document.getElementById('sessionVideoFile')?.click()}
+                    className="w-full py-2.5 px-3 bg-white text-[#5b21b6] border border-purple-200 text-xs font-bold rounded-xl flex items-center justify-center gap-2 hover:bg-purple-100 transition-colors"
+                  >
+                    <Video className="w-4 h-4 text-[#5b21b6]" />
+                    <span>{(newSession as any).video_url ? '✓ Video Uploaded! Click to Change' : '📁 Select Prerecorded Video File'}</span>
+                  </button>
+
+                  {(newSession as any).video_url && (
+                    <div className="pt-2 text-left">
+                      <span className="text-[10px] font-extrabold text-[#5b21b6] uppercase tracking-wider block mb-1">
+                        ▶ Video Confirmation Preview:
+                      </span>
+                      <video
+                        controls
+                        src={(newSession as any).video_url}
+                        className="w-full h-36 object-cover rounded-xl border border-purple-300 bg-black"
                       />
                     </div>
                   )}
@@ -467,12 +540,22 @@ export default function AdminContentPage() {
                     </p>
                   )}
                 </div>
-                <button
-                  onClick={() => handleDeleteSession(sess.id)}
-                  className="h-8 w-8 rounded-lg flex items-center justify-center text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors shrink-0"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    onClick={() => handleEditSession(sess)}
+                    className="h-8 w-8 rounded-lg flex items-center justify-center text-slate-400 hover:bg-purple-50 hover:text-[#5b21b6] transition-colors"
+                    title="Edit Session"
+                  >
+                    <Edit2 className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={() => handleDeleteSession(sess.id)}
+                    className="h-8 w-8 rounded-lg flex items-center justify-center text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors"
+                    title="Delete Session"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
             ))}
             {sessions.length === 0 && !showSessionForm && (
