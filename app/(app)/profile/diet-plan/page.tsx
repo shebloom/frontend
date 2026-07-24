@@ -17,6 +17,8 @@ import {
   Bot,
   Save,
   X,
+  AlertTriangle,
+  Scale,
 } from 'lucide-react';
 import { useAuth } from '@/components/auth-provider';
 import { apiFetch } from '@/lib/api';
@@ -34,9 +36,13 @@ export default function PatientMyDietPlanPage() {
   const [editTitle, setEditTitle] = useState('');
   const [editNotes, setEditNotes] = useState('');
   const [editBreakfast, setEditBreakfast] = useState('');
+  const [editBreakfastAlt, setEditBreakfastAlt] = useState('');
   const [editLunch, setEditLunch] = useState('');
+  const [editLunchAlt, setEditLunchAlt] = useState('');
   const [editSnack, setEditSnack] = useState('');
+  const [editSnackAlt, setEditSnackAlt] = useState('');
   const [editDinner, setEditDinner] = useState('');
+  const [editDinnerAlt, setEditDinnerAlt] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
@@ -64,9 +70,13 @@ export default function PatientMyDietPlanPage() {
             ],
             meal_structure: {
               breakfast: 'Avocado & poached eggs on sourdough or chia pudding with berries & flax seeds.',
+              breakfast_alternate: 'Moong dal chilla with mint chutney.',
               lunch: 'Grilled salmon or tofu salad with spinach, olive oil, and quinoa.',
+              lunch_alternate: 'Quinoa bowl with paneer & cucumber salad.',
               snack: 'Handful of raw walnuts + warm spearmint herbal tea.',
+              snack_alternate: 'Roasted makhana or apple slices with peanut butter.',
               dinner: 'Steamed greens with roasted vegetables and lean protein or dal with ghee & turmeric.',
+              dinner_alternate: 'Palak paneer with 1 millet roti.',
             },
             ai_tips: [
               'Hydrate with at least 2.5L of warm water daily to assist in hormone excretion.',
@@ -79,8 +89,9 @@ export default function PatientMyDietPlanPage() {
         setDietPlans([defaultPlan]);
         setActivePlan(defaultPlan);
       } else {
-        setDietPlans(plans);
-        setActivePlan(plans[0]);
+      setDietPlans(plans);
+      const chosen = res.active_plan || plans.find((p: any) => p.source === 'doctor' || p.is_doctor_assigned) || plans[0] || null;
+      setActivePlan(chosen);
       }
     } catch (err) {
       console.error('Failed to fetch diet plans', err);
@@ -99,9 +110,13 @@ export default function PatientMyDietPlanPage() {
     setEditNotes(activePlan.notes || '');
     const ms = activePlan.plan_details?.meal_structure || {};
     setEditBreakfast(ms.breakfast || '');
+    setEditBreakfastAlt(ms.breakfast_alternate || ms.breakfastAlternate || '');
     setEditLunch(ms.lunch || '');
+    setEditLunchAlt(ms.lunch_alternate || ms.lunchAlternate || '');
     setEditSnack(ms.snack || '');
+    setEditSnackAlt(ms.snack_alternate || ms.snackAlternate || '');
     setEditDinner(ms.dinner || '');
+    setEditDinnerAlt(ms.dinner_alternate || ms.dinnerAlternate || '');
     setIsEditing(true);
   };
 
@@ -114,9 +129,13 @@ export default function PatientMyDietPlanPage() {
       ...activePlan.plan_details,
       meal_structure: {
         breakfast: editBreakfast,
+        breakfast_alternate: editBreakfastAlt,
         lunch: editLunch,
+        lunch_alternate: editLunchAlt,
         snack: editSnack,
+        snack_alternate: editSnackAlt,
         dinner: editDinner,
+        dinner_alternate: editDinnerAlt,
       },
     };
 
@@ -251,6 +270,15 @@ export default function PatientMyDietPlanPage() {
             )}
           </div>
 
+          {/* Medical Disclaimer */}
+          <div className="bg-amber-50/70 border border-amber-200 rounded-3xl p-4 text-[11px] text-amber-800 leading-normal flex items-start gap-2.5 shadow-2xs">
+            <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <span className="font-extrabold uppercase block mb-0.5">Medical Disclaimer</span>
+              These dietary guidelines are for educational and nutritional guidance purposes only. They do not constitute personalized medical advice, diagnosis, or prescription treatments. Always consult with a qualified physician before making major changes to your clinical healthcare regimen.
+            </div>
+          </div>
+
           {/* AI Tailored Smart Recommendations */}
           <div className="bg-gradient-to-br from-purple-900 to-[#5b21b6] text-white rounded-[32px] p-6 shadow-md space-y-3">
             <div className="flex items-center gap-2">
@@ -277,11 +305,98 @@ export default function PatientMyDietPlanPage() {
             </ul>
           </div>
 
+          {/* Portion Sizing Statistics */}
+          {activePlan.plan_details?.suggested_portion_sizing && (
+            <div className="bg-white rounded-[32px] p-6 border border-slate-200/80 shadow-sm space-y-4">
+              <div>
+                <h3 className="font-bold text-slate-800 text-sm font-playfair flex items-center gap-2">
+                  <Scale className="w-4.5 h-4.5 text-[#5b21b6]" />
+                  Macro Breakdown & Portions
+                </h3>
+                <p className="text-[10px] text-slate-400 font-semibold">Suggested distribution based on weight metrics</p>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3 text-center">
+                <div className="bg-slate-50 rounded-2xl p-3 border border-slate-100 flex flex-col justify-center">
+                  <span className="text-lg font-black text-bloom-600">{activePlan.plan_details.suggested_portion_sizing.carb_pct || 40}%</span>
+                  <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wide">Carbs</span>
+                </div>
+                <div className="bg-slate-50 rounded-2xl p-3 border border-slate-100 flex flex-col justify-center">
+                  <span className="text-lg font-black text-[#5b21b6]">{activePlan.plan_details.suggested_portion_sizing.protein_pct || 30}%</span>
+                  <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wide">Protein</span>
+                </div>
+                <div className="bg-slate-50 rounded-2xl p-3 border border-slate-100 flex flex-col justify-center">
+                  <span className="text-lg font-black text-pink-600">{activePlan.plan_details.suggested_portion_sizing.fat_pct || 30}%</span>
+                  <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wide">Fats</span>
+                </div>
+              </div>
+
+              {/* Progress Bar Visualization */}
+              <div className="h-2.5 rounded-full overflow-hidden flex bg-slate-100 shadow-inner">
+                <div className="bg-bloom-500" style={{ width: `${activePlan.plan_details.suggested_portion_sizing.carb_pct || 40}%` }} />
+                <div className="bg-[#7c3aed]" style={{ width: `${activePlan.plan_details.suggested_portion_sizing.protein_pct || 30}%` }} />
+                <div className="bg-pink-500" style={{ width: `${activePlan.plan_details.suggested_portion_sizing.fat_pct || 30}%` }} />
+              </div>
+
+              {activePlan.plan_details.suggested_portion_sizing.note && (
+                <p className="text-[10px] text-slate-500 italic font-semibold leading-normal">
+                  💡 {activePlan.plan_details.suggested_portion_sizing.note}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Recommended Food Groups */}
+          {activePlan.plan_details?.recommended_categories && activePlan.plan_details.recommended_categories.length > 0 && (
+            <div className="space-y-3">
+              <h3 className="font-bold text-slate-800 text-sm font-playfair flex items-center gap-2">
+                <CheckCircle2 className="w-4.5 h-4.5 text-emerald-600" />
+                Recommended Food Groups
+              </h3>
+              <div className="grid grid-cols-1 gap-2.5">
+                {activePlan.plan_details.recommended_categories.map((cat: any, idx: number) => (
+                  <div key={idx} className="p-4 bg-emerald-50/40 border border-emerald-100/70 rounded-2xl flex items-start gap-3">
+                    <span className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-xs shrink-0">
+                      ✓
+                    </span>
+                    <div>
+                      <h4 className="font-bold text-xs text-slate-800">{cat.name}</h4>
+                      <p className="text-[10px] text-slate-500 mt-0.5 leading-relaxed font-medium">{cat.reason}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Foods to Limit */}
+          {activePlan.plan_details?.foods_to_limit && activePlan.plan_details.foods_to_limit.length > 0 && (
+            <div className="space-y-3">
+              <h3 className="font-bold text-slate-800 text-sm font-playfair flex items-center gap-2">
+                <AlertTriangle className="w-4.5 h-4.5 text-rose-500" />
+                Foods to Limit & Clinical Reasons
+              </h3>
+              <div className="grid grid-cols-1 gap-2.5">
+                {activePlan.plan_details.foods_to_limit.map((item: any, idx: number) => (
+                  <div key={idx} className="p-4 bg-rose-50/40 border border-rose-100/70 rounded-2xl flex items-start gap-3">
+                    <span className="w-6 h-6 rounded-full bg-rose-100 text-rose-700 flex items-center justify-center font-bold text-xs shrink-0">
+                      ✕
+                    </span>
+                    <div>
+                      <h4 className="font-bold text-xs text-slate-800">{item.name}</h4>
+                      <p className="text-[10px] text-slate-500 mt-0.5 leading-relaxed font-medium">{item.reason}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Guidelines Section */}
-          {activePlan.plan_details?.guidelines && (
+          {activePlan.plan_details?.guidelines && activePlan.plan_details.guidelines.length > 0 && (
             <div className="bg-white rounded-[32px] p-6 border border-slate-200/80 shadow-sm space-y-3">
               <h3 className="font-bold text-slate-800 text-sm font-playfair flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                <CheckCircle2 className="w-4.5 h-4.5 text-emerald-600" />
                 Condition Guidelines & Rules
               </h3>
 
@@ -296,25 +411,41 @@ export default function PatientMyDietPlanPage() {
             </div>
           )}
 
-          {/* Meal Structure Section */}
+          {/* Meal Structure & Alternatives Section */}
           {activePlan.plan_details?.meal_structure && (
             <div className="bg-white rounded-[32px] p-6 border border-slate-200/80 shadow-sm space-y-4">
               <h3 className="font-bold text-slate-800 text-sm font-playfair flex items-center gap-2">
-                <Utensils className="w-4 h-4 text-[#5b21b6]" />
-                Daily Meal Structure
+                <Utensils className="w-4.5 h-4.5 text-[#5b21b6]" />
+                Meal Structure & Alternatives
               </h3>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                {Object.entries(activePlan.plan_details.meal_structure).map(([mealKey, mealText]: any) => (
-                  <div key={mealKey} className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-1">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-[#5b21b6]">
-                      {mealKey}
-                    </span>
-                    <p className="text-xs font-semibold text-slate-800 leading-relaxed">
-                      {mealText}
-                    </p>
-                  </div>
-                ))}
+                {['breakfast', 'lunch', 'snack', 'dinner'].map((meal) => {
+                  const ms = activePlan.plan_details?.meal_structure || {};
+                  const primary = ms[meal];
+                  const alt = ms[`${meal}_alternate`] || ms[`${meal}Alternate`] || ms[`${meal}_alt`] || '';
+                  if (!primary && !alt) return null;
+
+                  return (
+                    <div key={meal} className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-2">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-[#9d174d] block border-b border-slate-200 pb-1">
+                        {meal}
+                      </span>
+                      {primary && (
+                        <div>
+                          <span className="text-[9px] font-extrabold bg-[#5b21b6]/10 text-[#5b21b6] px-2 py-0.5 rounded-full mr-1.5 uppercase">Primary</span>
+                          <p className="text-xs font-semibold text-slate-800 leading-relaxed mt-1">{primary}</p>
+                        </div>
+                      )}
+                      {alt && (
+                        <div className="pt-2 border-t border-dashed border-slate-200 mt-1">
+                          <span className="text-[9px] font-extrabold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full mr-1.5 uppercase">Alternative Option</span>
+                          <p className="text-xs font-medium text-slate-600 leading-relaxed mt-1">{alt}</p>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -325,15 +456,15 @@ export default function PatientMyDietPlanPage() {
       {/* Doctor Edit Modal */}
       {isEditing && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-[32px] p-6 max-w-md w-full space-y-4 shadow-2xl animate-in zoom-in-95 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+          <div className="bg-white rounded-[32px] max-w-md w-full flex flex-col max-h-[90vh] shadow-2xl animate-in zoom-in-95 overflow-hidden">
+            <div className="flex items-center justify-between border-b border-slate-100 p-5 shrink-0 bg-slate-50">
               <h3 className="font-bold text-slate-800 text-base font-playfair">Edit Patient Diet Plan</h3>
               <button onClick={() => setIsEditing(false)} className="text-slate-400 hover:text-slate-600">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveEdit} className="space-y-3 text-xs">
+            <form onSubmit={handleSaveEdit} className="flex-1 overflow-y-auto p-5 space-y-3 text-xs scrollbar-hide">
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Plan Title</label>
                 <input
@@ -355,55 +486,89 @@ export default function PatientMyDietPlanPage() {
                 />
               </div>
 
-              <div className="space-y-2 pt-1 border-t border-slate-100">
-                <span className="block text-[10px] font-bold text-[#5b21b6] uppercase tracking-wider">Meal Structure</span>
+              <div className="space-y-3 pt-2 border-t border-slate-100">
+                <span className="block text-[10px] font-bold text-[#5b21b6] uppercase tracking-wider">
+                  Meal Structure & Alternatives
+                </span>
                 
-                <div>
-                  <label className="block text-[9px] font-bold text-slate-500">Breakfast</label>
+                <div className="p-2.5 bg-slate-50 rounded-2xl border border-slate-100 space-y-1.5">
+                  <label className="block text-[9px] font-extrabold text-[#9d174d] uppercase">Breakfast</label>
                   <input
                     type="text"
                     value={editBreakfast}
                     onChange={e => setEditBreakfast(e.target.value)}
-                    className="w-full h-9 rounded-xl border border-slate-200 px-2.5 text-xs text-slate-800"
+                    placeholder="Primary Option..."
+                    className="w-full h-8 rounded-xl border border-slate-200 bg-white px-2.5 text-xs text-slate-800"
+                  />
+                  <input
+                    type="text"
+                    value={editBreakfastAlt}
+                    onChange={e => setEditBreakfastAlt(e.target.value)}
+                    placeholder="Alternative Option..."
+                    className="w-full h-8 rounded-xl border border-emerald-200/80 bg-white px-2.5 text-xs text-emerald-800"
                   />
                 </div>
 
-                <div>
-                  <label className="block text-[9px] font-bold text-slate-500">Lunch</label>
+                <div className="p-2.5 bg-slate-50 rounded-2xl border border-slate-100 space-y-1.5">
+                  <label className="block text-[9px] font-extrabold text-[#9d174d] uppercase">Lunch</label>
                   <input
                     type="text"
                     value={editLunch}
                     onChange={e => setEditLunch(e.target.value)}
-                    className="w-full h-9 rounded-xl border border-slate-200 px-2.5 text-xs text-slate-800"
+                    placeholder="Primary Option..."
+                    className="w-full h-8 rounded-xl border border-slate-200 bg-white px-2.5 text-xs text-slate-800"
+                  />
+                  <input
+                    type="text"
+                    value={editLunchAlt}
+                    onChange={e => setEditLunchAlt(e.target.value)}
+                    placeholder="Alternative Option..."
+                    className="w-full h-8 rounded-xl border border-emerald-200/80 bg-white px-2.5 text-xs text-emerald-800"
                   />
                 </div>
 
-                <div>
-                  <label className="block text-[9px] font-bold text-slate-500">Snack</label>
+                <div className="p-2.5 bg-slate-50 rounded-2xl border border-slate-100 space-y-1.5">
+                  <label className="block text-[9px] font-extrabold text-[#9d174d] uppercase">Snack</label>
                   <input
                     type="text"
                     value={editSnack}
                     onChange={e => setEditSnack(e.target.value)}
-                    className="w-full h-9 rounded-xl border border-slate-200 px-2.5 text-xs text-slate-800"
+                    placeholder="Primary Option..."
+                    className="w-full h-8 rounded-xl border border-slate-200 bg-white px-2.5 text-xs text-slate-800"
+                  />
+                  <input
+                    type="text"
+                    value={editSnackAlt}
+                    onChange={e => setEditSnackAlt(e.target.value)}
+                    placeholder="Alternative Option..."
+                    className="w-full h-8 rounded-xl border border-emerald-200/80 bg-white px-2.5 text-xs text-emerald-800"
                   />
                 </div>
 
-                <div>
-                  <label className="block text-[9px] font-bold text-slate-500">Dinner</label>
+                <div className="p-2.5 bg-slate-50 rounded-2xl border border-slate-100 space-y-1.5">
+                  <label className="block text-[9px] font-extrabold text-[#9d174d] uppercase">Dinner</label>
                   <input
                     type="text"
                     value={editDinner}
                     onChange={e => setEditDinner(e.target.value)}
-                    className="w-full h-9 rounded-xl border border-slate-200 px-2.5 text-xs text-slate-800"
+                    placeholder="Primary Option..."
+                    className="w-full h-8 rounded-xl border border-slate-200 bg-white px-2.5 text-xs text-slate-800"
+                  />
+                  <input
+                    type="text"
+                    value={editDinnerAlt}
+                    onChange={e => setEditDinnerAlt(e.target.value)}
+                    placeholder="Alternative Option..."
+                    className="w-full h-8 rounded-xl border border-emerald-200/80 bg-white px-2.5 text-xs text-emerald-800"
                   />
                 </div>
               </div>
 
-              <div className="flex gap-2 pt-3">
+              <div className="flex gap-2 pt-4 border-t border-slate-100 shrink-0 sticky bottom-0 bg-white">
                 <button
                   type="button"
                   onClick={() => setIsEditing(false)}
-                  className="w-1/2 h-10 text-slate-500 font-bold rounded-xl"
+                  className="w-1/2 h-10 text-slate-500 font-bold rounded-xl border border-slate-200 hover:bg-slate-50"
                 >
                   Cancel
                 </button>

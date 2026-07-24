@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Video,
   VideoOff,
@@ -26,6 +27,8 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { apiFetch } from '@/lib/api';
+import { supabase } from '@/lib/supabase';
+import { openMedicalReport } from '@/lib/reports';
 import { useAuth } from '@/components/auth-provider';
 
 interface VideoRoomModalProps {
@@ -52,16 +55,280 @@ export function VideoRoomModal({
   appointmentId,
 }: VideoRoomModalProps) {
   const { profile } = useAuth();
+  const router = useRouter();
   const [micOn, setMicOn] = useState(true);
   const [cameraOn, setCameraOn] = useState(true);
   const [callDuration, setCallDuration] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
+  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const localVideoRef = useRef<HTMLVideoElement | null>(null);
+
+  const [remoteMicOn, setRemoteMicOn] = useState(true);
+  const [remoteCameraOn, setRemoteCameraOn] = useState(true);
+
+  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+  const [hasRemoteVideo, setHasRemoteVideo] = useState(false);
+  const pcRef = useRef<RTCPeerConnection | null>(null);
+  const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
+
+  const remoteName = profile?.role === 'doctor' ? patientName : doctorName;
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      (window as any).shebloom_is_in_call = isOpen;
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        (window as any).shebloom_is_in_call = false;
+      }
+    };
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen || !appointmentId) return;
+    // Wait until localStream is available before setting up WebRTC
+    // This prevents the race condition where tracks are added before the stream is ready
+    if (!localStream) {
+      console.log('[WebRTC] Waiting for localStream before initializing peer connection...');
+      return;
+    }
+
+    let pc: RTCPeerConnection | null = null;
+    let reconnectTimeout: NodeJS.Timeout | null = null;
+
+    const signalingChannel = supabase.channel(`video-room-${appointmentId}`, {
+      config: { broadcast: { self: false } },
+    });
+
+    const initPeerConnection = () => {
+      if (pcRef.current) {
+        pcRef.current.close();
+      }
+
+      pc = new RTCPeerConnection({
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+          { urls: 'stun:stun2.l.google.com:19302' },
+          { urls: 'stun:global.stun.twilio.com:3478' },
+        ],
+      });
+      pcRef.current = pc;
+
+      console.log(`[WebRTC] PeerConnection created for appointment ${appointmentId}`);
+
+      // ── Add all local tracks BEFORE creating any offer/answer ──────────────
+      localStream.getTracks().forEach((track) => {
+        pc?.addTrack(track, localStream);
+        console.log(`[WebRTC] Added local track: ${track.kind} (${track.label})`);
+      });
+
+      // ── Remote track received ──────────────────────────────────────────────
+      pc.ontrack = (event) => {
+        if (event.streams && event.streams[0]) {
+          const stream = event.streams[0];
+          console.log(`[WebRTC] Remote track received: ${event.track.kind}`);
+          setRemoteStream(stream);
+          setHasRemoteVideo(true);
+          if (remoteVideoRef.current) {
+            remoteVideoRef.current.srcObject = stream;
+          }
+        }
+      };
+
+      // ── ICE candidate generated → broadcast to peer ────────────────────────
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          console.log(`[WebRTC] ICE candidate generated: ${event.candidate.type} ${event.candidate.protocol}`);
+          signalingChannel.send({
+            type: 'broadcast',
+            event: 'webrtc-ice',
+            payload: { candidate: event.candidate, senderId: profile?.id },
+          });
+        } else {
+          console.log('[WebRTC] ICE gathering complete.');
+        }
+      };
+
+      pc.onicegatheringstatechange = () => {
+        console.log(`[WebRTC] ICE gathering state: ${pc?.iceGatheringState}`);
+      };
+
+      // ── ICE connection state — handle reconnection ─────────────────────────
+      pc.oniceconnectionstatechange = () => {
+        const state = pc?.iceConnectionState;
+        console.log(`[WebRTC] ICE connection state changed: ${state}`);
+
+        if (state === 'connected' || state === 'completed') {
+          if (reconnectTimeout) clearTimeout(reconnectTimeout);
+          console.log('[WebRTC] ✅ ICE connected — call is active.');
+        } else if (state === 'disconnected') {
+          console.warn('[WebRTC] ⚠️ ICE disconnected — attempting reconnection in 3s...');
+          reconnectTimeout = setTimeout(async () => {
+            if (!pcRef.current || pcRef.current.iceConnectionState !== 'disconnected') return;
+            console.log('[WebRTC] Initiating reconnection — creating new offer...');
+            try {
+              const offer = await pcRef.current.createOffer({ iceRestart: true });
+              await pcRef.current.setLocalDescription(offer);
+              signalingChannel.send({
+                type: 'broadcast',
+                event: 'webrtc-offer',
+                payload: { offer, senderId: profile?.id, isReconnect: true },
+              });
+            } catch (e) {
+              console.error('[WebRTC] Reconnection offer failed:', e);
+            }
+          }, 3000);
+        } else if (state === 'failed') {
+          console.error('[WebRTC] ❌ ICE failed — connection lost.');
+          if (reconnectTimeout) clearTimeout(reconnectTimeout);
+        } else if (state === 'closed') {
+          console.log('[WebRTC] Connection closed.');
+        }
+      };
+
+      pc.onsignalingstatechange = () => {
+        console.log(`[WebRTC] Signaling state: ${pc?.signalingState}`);
+      };
+
+      pc.onconnectionstatechange = () => {
+        console.log(`[WebRTC] Connection state: ${pc?.connectionState}`);
+      };
+    };
+
+    signalingChannel
+      .on('broadcast', { event: 'state-change' }, ({ payload }) => {
+        const isDoc = profile?.role === 'doctor';
+        if (isDoc) {
+          if (payload.patientMic !== undefined) setRemoteMicOn(payload.patientMic);
+          if (payload.patientCam !== undefined) setRemoteCameraOn(payload.patientCam);
+        } else {
+          if (payload.doctorMic !== undefined) setRemoteMicOn(payload.doctorMic);
+          if (payload.doctorCam !== undefined) setRemoteCameraOn(payload.doctorCam);
+        }
+      })
+      .on('broadcast', { event: 'webrtc-join' }, async ({ payload }) => {
+        if (payload?.senderId === profile?.id) return;
+        console.log(`[WebRTC] Remote peer joined (${payload?.senderRole}). Creating offer...`);
+        if (pcRef.current && (profile?.role === 'doctor' || payload?.senderRole === 'patient')) {
+          try {
+            const offer = await pcRef.current.createOffer();
+            await pcRef.current.setLocalDescription(offer);
+            console.log('[WebRTC] Offer created and set as local description.');
+            signalingChannel.send({
+              type: 'broadcast',
+              event: 'webrtc-offer',
+              payload: { offer, senderId: profile?.id },
+            });
+          } catch (e) {
+            console.error('[WebRTC] Offer creation error:', e);
+          }
+        }
+      })
+      .on('broadcast', { event: 'webrtc-offer' }, async ({ payload }) => {
+        if (payload?.senderId === profile?.id || !pcRef.current) return;
+        console.log('[WebRTC] Received offer. Creating answer...');
+        try {
+          await pcRef.current.setRemoteDescription(new RTCSessionDescription(payload.offer));
+          const answer = await pcRef.current.createAnswer();
+          await pcRef.current.setLocalDescription(answer);
+          console.log('[WebRTC] Answer created and sent.');
+          signalingChannel.send({
+            type: 'broadcast',
+            event: 'webrtc-answer',
+            payload: { answer, senderId: profile?.id },
+          });
+        } catch (e) {
+          console.error('[WebRTC] Answer creation error:', e);
+        }
+      })
+      .on('broadcast', { event: 'webrtc-answer' }, async ({ payload }) => {
+        if (payload?.senderId === profile?.id || !pcRef.current) return;
+        console.log('[WebRTC] Received answer. Setting remote description...');
+        try {
+          await pcRef.current.setRemoteDescription(new RTCSessionDescription(payload.answer));
+          console.log('[WebRTC] Remote description set from answer.');
+        } catch (e) {
+          console.error('[WebRTC] setRemoteDescription (answer) error:', e);
+        }
+      })
+      .on('broadcast', { event: 'webrtc-ice' }, async ({ payload }) => {
+        if (payload?.senderId === profile?.id || !pcRef.current) return;
+        try {
+          await pcRef.current.addIceCandidate(new RTCIceCandidate(payload.candidate));
+          console.log(`[WebRTC] ICE candidate added from peer.`);
+        } catch (e) {
+          // Benign: can happen if remote description not set yet
+          console.warn('[WebRTC] addIceCandidate error (may be benign):', e);
+        }
+      })
+      .subscribe((status) => {
+        console.log(`[WebRTC] Signaling channel status: ${status}`);
+        if (status === 'SUBSCRIBED') {
+          initPeerConnection();
+          const isDoc = profile?.role === 'doctor';
+          signalingChannel.send({
+            type: 'broadcast',
+            event: 'state-change',
+            payload: isDoc
+              ? { doctorMic: micOn, doctorCam: cameraOn }
+              : { patientMic: micOn, patientCam: cameraOn },
+          });
+          signalingChannel.send({
+            type: 'broadcast',
+            event: 'webrtc-join',
+            payload: { senderId: profile?.id, senderRole: profile?.role },
+          });
+          console.log(`[WebRTC] Sent webrtc-join as ${profile?.role}`);
+        }
+      });
+
+    return () => {
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
+      if (pcRef.current) {
+        pcRef.current.close();
+        pcRef.current = null;
+      }
+      supabase.removeChannel(signalingChannel);
+      console.log(`[WebRTC] Cleaned up peer connection and signaling channel for appointment ${appointmentId}`);
+    };
+  }, [isOpen, appointmentId, localStream, profile, micOn, cameraOn]);
+
+  const sendStateUpdate = (newMic: boolean, newCam: boolean) => {
+    if (!appointmentId) return;
+    const isDoc = profile?.role === 'doctor';
+    const channel = supabase.channel(`video-room-${appointmentId}`);
+    channel.send({
+      type: 'broadcast',
+      event: 'state-change',
+      payload: isDoc 
+        ? { doctorMic: newMic, doctorCam: newCam } 
+        : { patientMic: newMic, patientCam: newCam }
+    });
+  };
+
+  const handleToggleMic = () => {
+    const nextVal = !micOn;
+    setMicOn(nextVal);
+    sendStateUpdate(nextVal, cameraOn);
+    if (localStream) {
+      localStream.getAudioTracks().forEach(track => track.enabled = nextVal);
+    }
+  };
+
+  const handleToggleCamera = () => {
+    const nextVal = !cameraOn;
+    setCameraOn(nextVal);
+    sendStateUpdate(micOn, nextVal);
+    if (localStream) {
+      localStream.getVideoTracks().forEach(track => track.enabled = nextVal);
+    }
+  };
+
   // Simulation mode fallback (for when Daily.co URL returns 404 or fails)
   const [useSimulation, setUseSimulation] = useState(false);
-  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
-  const localVideoRef = useRef<HTMLVideoElement>(null);
 
   // Split-screen Patient Info State
   const [showPatientInfo, setShowPatientInfo] = useState(!!patientId);
@@ -74,8 +341,40 @@ export function VideoRoomModal({
   const [dietTitle, setDietTitle] = useState('PCOS anti-inflammatory');
   const [dietGuidelines, setDietGuidelines] = useState('');
   const [medications, setMedications] = useState('');
+  
+  // Meal Structure & Alternatives state
+  const [breakfastPrimary, setBreakfastPrimary] = useState('');
+  const [breakfastAlt, setBreakfastAlt] = useState('');
+  const [lunchPrimary, setLunchPrimary] = useState('');
+  const [lunchAlt, setLunchAlt] = useState('');
+  const [snackPrimary, setSnackPrimary] = useState('');
+  const [snackAlt, setSnackAlt] = useState('');
+  const [dinnerPrimary, setDinnerPrimary] = useState('');
+  const [dinnerAlt, setDinnerAlt] = useState('');
+
   const [savingTreatment, setSavingTreatment] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState('');
+
+  // Prescription Form State
+  const [rxMedication, setRxMedication] = useState('');
+  const [rxInstructions, setRxInstructions] = useState('');
+  const [rxIsSigning, setRxIsSigning] = useState(true);
+  const [rxSending, setRxSending] = useState(false);
+  const [rxSuccess, setRxSuccess] = useState('');
+
+  const [doctorActiveTab, setDoctorActiveTab] = useState<'profile' | 'diet' | 'prescription'>('profile');
+
+  const calculateAge = (dobString?: string) => {
+    if (!dobString) return null;
+    const birthDate = new Date(dobString);
+    const today = new Date();
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const m = today.getMonth() - birthDate.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+      age--;
+    }
+    return age;
+  };
 
   useEffect(() => {
     if (isOpen && patientId && profile?.role === 'doctor') {
@@ -91,24 +390,40 @@ export function VideoRoomModal({
         .catch(err => console.error("Error loading patient records inside call:", err))
         .finally(() => setLoadingPatient(false));
 
-      // Fetch active diet plan
-      if (appointmentId) {
-        apiFetch(`/diet/appointment/${appointmentId}`)
-          .then(res => {
-            if (res.diet_plan) {
-              setDietPlanId(res.diet_plan.id);
-              setDietTitle(res.diet_plan.title || '');
-              setMedications(res.diet_plan.plan_details?.medications || '');
-              
-              const details = res.diet_plan.plan_details;
-              const guidelinesText = details?.guidelines
-                ? (Array.isArray(details.guidelines) ? details.guidelines.join('\n') : details.guidelines)
-                : '';
-              setDietGuidelines(guidelinesText);
-            }
-          })
-          .catch(() => {});
-      }
+      // Fetch active diet plan for patient (pre-fills existing doctor or AI plan)
+      const dietEndpoint = appointmentId ? `/diet/appointment/${appointmentId}` : `/diet/patient/${patientId}`;
+      apiFetch(dietEndpoint)
+        .then(res => {
+          if (res.diet_plan) return res.diet_plan;
+          if (patientId) {
+            return apiFetch(`/diet/patient/${patientId}`).then(pRes => pRes.diet_plan);
+          }
+          return null;
+        })
+        .then(plan => {
+          if (plan) {
+            setDietPlanId(plan.id);
+            setDietTitle(plan.title || '');
+            setMedications(plan.plan_details?.medications || '');
+            
+            const details = plan.plan_details || {};
+            const ms = details.meal_structure || {};
+            setBreakfastPrimary(ms.breakfast || '');
+            setBreakfastAlt(ms.breakfast_alternate || ms.breakfastAlternate || '');
+            setLunchPrimary(ms.lunch || '');
+            setLunchAlt(ms.lunch_alternate || ms.lunchAlternate || '');
+            setSnackPrimary(ms.snack || '');
+            setSnackAlt(ms.snack_alternate || ms.snackAlternate || '');
+            setDinnerPrimary(ms.dinner || '');
+            setDinnerAlt(ms.dinner_alternate || ms.dinnerAlternate || '');
+
+            const guidelinesText = details?.guidelines
+              ? (Array.isArray(details.guidelines) ? details.guidelines.join('\n') : details.guidelines)
+              : '';
+            setDietGuidelines(guidelinesText);
+          }
+        })
+        .catch(() => {});
     }
   }, [isOpen, patientId, appointmentId, profile]);
 
@@ -122,6 +437,16 @@ export function VideoRoomModal({
         summary: `Custom treatment plan assigned by ${doctorName} during consultation.`,
         guidelines: parsedGuidelines,
         medications: medications,
+        meal_structure: {
+          breakfast: breakfastPrimary,
+          breakfast_alternate: breakfastAlt,
+          lunch: lunchPrimary,
+          lunch_alternate: lunchAlt,
+          snack: snackPrimary,
+          snack_alternate: snackAlt,
+          dinner: dinnerPrimary,
+          dinner_alternate: dinnerAlt,
+        },
       };
 
       if (dietPlanId && !dietPlanId.startsWith('diet-')) {
@@ -155,6 +480,32 @@ export function VideoRoomModal({
     }
   };
 
+  const handleSendPrescription = async () => {
+    if (!patientId || !rxMedication.trim()) return;
+    setRxSending(true);
+    setRxSuccess('');
+    try {
+      await apiFetch(`/health-records/prescriptions`, {
+        method: 'POST',
+        body: JSON.stringify({
+          patient_id: patientId,
+          medications: rxMedication,
+          instructions: rxInstructions,
+          is_signed: rxIsSigning,
+          appointment_id: appointmentId || null,
+        }),
+      });
+      setRxSuccess('Prescription PDF sent via chat!');
+      setRxMedication('');
+      setRxInstructions('');
+      setTimeout(() => setRxSuccess(''), 4000);
+    } catch (err: any) {
+      alert(err.message || 'Failed to send prescription');
+    } finally {
+      setRxSending(false);
+    }
+  };
+
   useEffect(() => {
     if (isOpen) {
       setCallDuration(0);
@@ -170,13 +521,15 @@ export function VideoRoomModal({
   }, [isOpen]);
 
   useEffect(() => {
-    if (isOpen && useSimulation) {
-      navigator.mediaDevices.getUserMedia({ video: cameraOn, audio: micOn })
+    if (isOpen) {
+      navigator.mediaDevices?.getUserMedia?.({ video: true, audio: true })
         .then((stream) => {
           setLocalStream(stream);
           if (localVideoRef.current) {
             localVideoRef.current.srcObject = stream;
           }
+          stream.getAudioTracks().forEach(track => track.enabled = micOn);
+          stream.getVideoTracks().forEach(track => track.enabled = cameraOn);
         })
         .catch(err => {
           console.warn("Camera/Mic access rejected or unavailable:", err);
@@ -187,12 +540,19 @@ export function VideoRoomModal({
         setLocalStream(null);
       }
     }
-    return () => {
-      if (localStream) {
-        localStream.getTracks().forEach(track => track.stop());
-      }
-    };
-  }, [isOpen, useSimulation, cameraOn, micOn]);
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (cameraOn && localStream && localVideoRef.current) {
+      localVideoRef.current.srcObject = localStream;
+    }
+  }, [cameraOn, localStream]);
+
+  useEffect(() => {
+    if (remoteStream && remoteVideoRef.current) {
+      remoteVideoRef.current.srcObject = remoteStream;
+    }
+  }, [remoteStream, hasRemoteVideo, remoteCameraOn]);
 
   const handleClose = () => {
     if (localStream) {
@@ -200,9 +560,31 @@ export function VideoRoomModal({
       setLocalStream(null);
     }
     onClose();
+    router.push('/profile');
   };
 
   if (!isOpen) return null;
+
+  const participantDisplayName = profile?.role === 'doctor'
+    ? (profile?.full_name || doctorName || 'Dr. Deepa Madhavan')
+    : (profile?.full_name || patientName || 'Patient');
+
+  const encodedDisplayName = encodeURIComponent(participantDisplayName);
+
+  const jitsiConfigHash = `#userInfo.displayName="${encodedDisplayName}"` +
+    `&config.prejoinPageEnabled=false` +
+    `&config.requireDisplayName=false` +
+    `&config.SHOW_JITSI_WATERMARK=false` +
+    `&config.SHOW_WATERMARK_FOR_GUESTS=false` +
+    `&config.SHOW_BRAND_WATERMARK=false` +
+    `&config.toolbarButtons=[]` +
+    `&interfaceConfig.TOOLBAR_BUTTONS=[]` +
+    `&interfaceConfig.SHOW_JITSI_WATERMARK=false` +
+    `&interfaceConfig.SHOW_WATERMARK_FOR_GUESTS=false`;
+
+  const formattedRoomUrl = roomUrl
+    ? (roomUrl.includes('#') ? `${roomUrl.split('#')[0]}${jitsiConfigHash}` : `${roomUrl}${jitsiConfigHash}`)
+    : '';
 
   const formatDuration = (seconds: number) => {
     const m = Math.floor(seconds / 60);
@@ -242,17 +624,6 @@ export function VideoRoomModal({
           </div>
 
           <div className="flex items-center gap-2.5">
-            <button
-              onClick={() => setUseSimulation(!useSimulation)}
-              className={cn(
-                "px-2.5 py-1 text-[10px] font-extrabold rounded-lg border transition-all",
-                useSimulation 
-                  ? "bg-amber-600 border-amber-500 text-white" 
-                  : "bg-slate-800 border-slate-700 text-amber-400 hover:bg-slate-700"
-              )}
-            >
-              {useSimulation ? "Daily.co Mode" : "Daily.co Offline? Use local Sandbox"}
-            </button>
             <span className="text-xs font-bold font-mono text-purple-300 bg-purple-950/60 px-3 py-1 rounded-full border border-purple-800/40">
               {formatDuration(callDuration)}
             </span>
@@ -268,84 +639,101 @@ export function VideoRoomModal({
         {/* Main Body (Horizontal split if showPatientInfo is active) */}
         <div className="flex-1 flex overflow-hidden">
           
-          {/* Embedded Video Call Frame */}
+          {/* Native HTML5 WebRTC Video Call Room */}
           <div className="flex-1 bg-slate-950 relative flex items-center justify-center overflow-hidden">
-            {useSimulation ? (
-              <div className="w-full h-full p-4 grid grid-cols-1 gap-4 bg-slate-950">
-                {/* Local camera view */}
-                <div className="relative rounded-2xl overflow-hidden bg-slate-900 border border-slate-800 flex items-center justify-center h-48 md:h-auto">
-                  {cameraOn ? (
-                    <video
-                      ref={localVideoRef}
-                      autoPlay
-                      playsInline
-                      muted
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="text-center text-slate-500 space-y-2">
-                      <VideoOff className="w-10 h-10 mx-auto opacity-40" />
-                      <p className="text-[11px] font-bold">Your camera is off</p>
-                    </div>
-                  )}
-                  <span className="absolute bottom-3 left-3 bg-slate-950/80 px-2.5 py-1 rounded-lg text-[9px] font-bold text-white border border-slate-800 uppercase tracking-wider">
-                    You (Secure Feed)
-                  </span>
-                </div>
-
-                {/* Remote client view (doctor or patient) */}
-                <div className="relative rounded-2xl overflow-hidden bg-slate-900 border border-slate-800 flex items-center justify-center h-48 md:h-auto">
-                  <div className="text-center space-y-3 z-10 p-4">
-                    <div className="w-14 h-14 rounded-full bg-bloom-100/10 text-bloom-400 border border-bloom-500/20 flex items-center justify-center mx-auto animate-pulse">
-                      <Sparkles className="w-6 h-6 text-bloom-400" />
-                    </div>
-                    <h4 className="text-xs font-bold text-slate-200">{doctorName}</h4>
-                    <p className="text-[10px] text-slate-500 font-semibold max-w-xs leading-normal">
-                      Connected. Waiting for host to share feed...
-                    </p>
+            <div className="w-full h-full p-4 grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-950">
+              {/* Local camera view */}
+              <div className="relative rounded-2xl overflow-hidden bg-slate-900 border border-slate-800 flex items-center justify-center min-h-[220px] md:h-auto">
+                {cameraOn ? (
+                  <video
+                    ref={localVideoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className="w-full h-full object-cover rounded-2xl"
+                  />
+                ) : (
+                  <div className="text-center text-slate-500 space-y-2">
+                    <VideoOff className="w-10 h-10 mx-auto opacity-40 text-slate-400" />
+                    <p className="text-xs font-bold text-slate-400">Your camera is off</p>
                   </div>
-                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(91,33,182,0.15),transparent)] animate-pulse" />
-                  <span className="absolute bottom-3 left-3 bg-slate-950/80 px-2.5 py-1 rounded-lg text-[9px] font-bold text-white border border-slate-800 uppercase tracking-wider">
-                    {doctorName} (Consulting)
+                )}
+                {!micOn && (
+                  <span className="absolute top-3 right-3 bg-red-600/90 text-white px-2.5 py-1 rounded-lg text-[9px] font-extrabold flex items-center gap-1 border border-red-500/30 shadow-md z-10">
+                    <MicOff className="w-3.5 h-3.5" /> MUTED
                   </span>
-                </div>
+                )}
+                <span className="absolute bottom-3 left-3 bg-slate-950/80 px-2.5 py-1 rounded-lg text-[9px] font-bold text-white border border-slate-800 uppercase tracking-wider z-10">
+                  You (Secure Feed)
+                </span>
               </div>
-            ) : roomUrl ? (
-              <iframe
-                src={roomUrl}
-                allow="camera; microphone; display-capture; autoplay; clipboard-write; encrypted-media"
-                className="w-full h-full border-0"
-                title="SheBloom Doctor Video Call"
-              />
-            ) : (
-              <div className="text-center space-y-3">
-                <div className="w-16 h-16 rounded-full bg-purple-900/40 text-purple-300 flex items-center justify-center mx-auto border border-purple-500/30">
-                  <Video className="w-8 h-8" />
-                </div>
-                <p className="text-xs font-bold text-slate-400">Initializing encrypted video room...</p>
+
+              {/* Remote client view (doctor or patient) */}
+              <div className="relative rounded-2xl overflow-hidden bg-slate-900 border border-slate-800 flex items-center justify-center min-h-[220px] md:h-auto">
+                {remoteCameraOn ? (
+                  <video
+                    ref={remoteVideoRef}
+                    autoPlay
+                    playsInline
+                    className="w-full h-full object-cover rounded-2xl"
+                  />
+                ) : (
+                  <div className="text-center text-slate-500 space-y-2">
+                    <VideoOff className="w-10 h-10 mx-auto opacity-40 text-slate-400" />
+                    <p className="text-xs font-bold text-slate-400">{remoteName}'s camera is off</p>
+                  </div>
+                )}
+                {!remoteMicOn && (
+                  <span className="absolute top-3 right-3 bg-red-600/90 text-white px-2.5 py-1 rounded-lg text-[9px] font-extrabold flex items-center gap-1 border border-red-500/30 shadow-md z-10">
+                    <MicOff className="w-3.5 h-3.5" /> MUTED
+                  </span>
+                )}
+                <span className="absolute bottom-3 left-3 bg-slate-950/80 px-2.5 py-1 rounded-lg text-[9px] font-bold text-white border border-slate-800 uppercase tracking-wider z-10">
+                  {remoteName} (Consulting)
+                </span>
               </div>
-            )}
+            </div>
           </div>
 
           {/* Right panel: Patient case file & Treatment updates (Doctor only) */}
           {profile?.role === 'doctor' && showPatientInfo && (
-            <div className="w-96 bg-white border-l border-slate-800 flex flex-col shrink-0 overflow-hidden text-slate-800 animate-in slide-in-from-right duration-300">
+            <div className="w-96 bg-white border-l border-slate-200 flex flex-col shrink-0 overflow-hidden text-slate-800 animate-in slide-in-from-right duration-300">
               {/* Drawer Header */}
-              <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-200 bg-slate-50 shrink-0">
-                <div>
-                  <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-600">Consultation Case File</h3>
-                  <p className="text-[9px] text-slate-400 font-semibold mt-0.5">Live Profile, Reports & Treatment Updates</p>
+              <div className="flex flex-col border-b border-slate-200 bg-slate-50 shrink-0">
+                <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200/60">
+                  <div>
+                    <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-600 font-playfair">Consultation Workspace</h3>
+                    <p className="text-[9px] text-slate-400 font-semibold mt-0.5">Live Clinical Tools & Records</p>
+                  </div>
+                  <button
+                    onClick={() => setShowPatientInfo(false)}
+                    className="h-7 w-7 rounded-full hover:bg-slate-200 flex items-center justify-center text-slate-400"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
                 </div>
-                <button
-                  onClick={() => setShowPatientInfo(false)}
-                  className="h-7 w-7 rounded-full hover:bg-slate-200 flex items-center justify-center text-slate-400"
-                >
-                  <X className="h-4 w-4" />
-                </button>
+
+                {/* Tabs Switcher */}
+                <div className="flex text-[10px] border-b border-slate-100">
+                  {(['profile', 'diet', 'prescription'] as const).map((tab) => (
+                    <button
+                      key={tab}
+                      onClick={() => setDoctorActiveTab(tab)}
+                      className={cn(
+                        "flex-1 py-2.5 text-center font-bold uppercase tracking-wider border-b-2 transition-all",
+                        doctorActiveTab === tab
+                          ? "border-[#5b21b6] text-[#5b21b6] bg-white"
+                          : "border-transparent text-slate-400 hover:text-slate-600 bg-slate-50"
+                      )}
+                    >
+                      {tab === 'profile' ? 'Profile & Reports' : tab === 'diet' ? 'Diet Plan' : 'Prescribe'}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {/* Drawer Content */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-5 scrollbar-hide">
+              <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-hide">
                 {loadingPatient ? (
                   <div className="py-8 flex flex-col items-center justify-center gap-1.5">
                     <div className="h-6 w-6 rounded-full border-2 border-bloom-200 border-t-bloom-600 animate-spin" />
@@ -353,121 +741,289 @@ export function VideoRoomModal({
                   </div>
                 ) : patientProfile ? (
                   <>
-                    {/* Basic Patient Info */}
-                    <div className="p-3 bg-slate-50 border border-slate-200/60 rounded-xl flex items-center gap-3">
-                      <div className="h-10 w-10 rounded-lg bg-bloom-100 flex items-center justify-center font-bold text-bloom-600 text-sm">
-                        {patientProfile.full_name?.[0]?.toUpperCase()}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <h4 className="font-extrabold text-xs text-slate-800 truncate">{patientProfile.full_name}</h4>
-                        <p className="text-[10px] text-slate-400 font-semibold">{patientProfile.email}</p>
-                      </div>
-                    </div>
-
-                    {/* Vitals Grid */}
-                    <div className="grid grid-cols-3 gap-2">
-                      <div className="bg-slate-50 rounded-xl p-2 border border-slate-200/50 flex flex-col items-center text-center">
-                        <Weight className="h-4 w-4 text-bloom-600" />
-                        <span className="text-[11px] font-black text-slate-800 mt-1">{patientProfile.weight_kg ? `${patientProfile.weight_kg} kg` : '--'}</span>
-                        <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wide">Weight</span>
-                      </div>
-                      <div className="bg-slate-50 rounded-xl p-2 border border-slate-200/50 flex flex-col items-center text-center">
-                        <Ruler className="h-4 w-4 text-bloom-600" />
-                        <span className="text-[11px] font-black text-slate-800 mt-1">{patientProfile.height_cm ? `${patientProfile.height_cm} cm` : '--'}</span>
-                        <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wide">Height</span>
-                      </div>
-                      <div className="bg-slate-50 rounded-xl p-2 border border-slate-200/50 flex flex-col items-center text-center">
-                        <Droplets className="h-4 w-4 text-bloom-600" />
-                        <span className="text-[11px] font-black text-slate-800 mt-1">{patientProfile.blood_group || '--'}</span>
-                        <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wide">Blood</span>
-                      </div>
-                    </div>
-
-                    {/* Uploaded Reports & Records */}
-                    <div className="space-y-2">
-                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Medical Records</p>
-                      {patientRecords.length > 0 ? (
-                        <div className="space-y-1.5 max-h-36 overflow-y-auto scrollbar-hide">
-                          {patientRecords.map((rec: any) => (
-                            <div key={rec.id} className="p-2 bg-slate-50 border border-slate-200/50 rounded-xl flex items-center justify-between gap-2">
-                              <div className="min-w-0 flex-1 flex items-center gap-1.5">
-                                <FileText className="h-3.5 w-3.5 text-bloom-500 shrink-0" />
-                                <span className="text-[10px] font-bold text-slate-700 truncate">{rec.file_name || rec.record_type}</span>
-                              </div>
-                              {rec.file_url && (
-                                <a
-                                  href={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api'}/doctor-portal/patients/${patientId}/documents/${rec.file_url.split('/').pop()}`}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="text-[9px] font-bold text-bloom-600 bg-bloom-50 px-2 py-1 rounded-md hover:bg-bloom-100"
-                                >
-                                  View
-                                </a>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="text-[10px] text-slate-400 italic">No health records uploaded.</p>
-                      )}
-                    </div>
-
-                    {/* Diet & Medications Form */}
-                    <div className="pt-3 border-t border-slate-200 space-y-3">
-                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1">
-                        <Apple className="w-3.5 h-3.5 text-bloom-600" />
-                        <span>Prescribe Diet & Medication</span>
-                      </p>
-
-                      <div className="space-y-2.5">
-                        <div>
-                          <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block mb-0.5">Plan Title *</label>
-                          <input
-                            type="text"
-                            value={dietTitle}
-                            onChange={e => setDietTitle(e.target.value)}
-                            placeholder="e.g. Hormonal Regulating Plan"
-                            className="w-full h-8 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-bloom-300"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block mb-0.5">Diet Guidelines (One per line)</label>
-                          <textarea
-                            rows={3}
-                            value={dietGuidelines}
-                            onChange={e => setDietGuidelines(e.target.value)}
-                            placeholder="Guidelines here..."
-                            className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-800 focus:outline-none focus:ring-1 focus:ring-bloom-300 resize-none"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block mb-0.5">Medications & Supplements</label>
-                          <textarea
-                            rows={3}
-                            value={medications}
-                            onChange={e => setMedications(e.target.value)}
-                            placeholder="e.g. Supplement 2g daily..."
-                            className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-800 focus:outline-none focus:ring-1 focus:ring-bloom-300 resize-none font-semibold"
-                          />
-                        </div>
-
-                        {saveSuccess && (
-                          <div className="flex items-center gap-1.5 text-[10px] font-bold text-green-700 bg-green-50 p-2 rounded-lg border border-green-100">
-                            <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
-                            {saveSuccess}
+                    {/* TAB 1: PROFILE & REPORTS */}
+                    {doctorActiveTab === 'profile' && (
+                      <div className="space-y-4 animate-in fade-in duration-200">
+                        {/* Basic Patient Info */}
+                        <div className="p-3 bg-slate-50 border border-slate-200/60 rounded-xl flex items-center gap-3">
+                          <div className="h-10 w-10 rounded-lg bg-bloom-100 flex items-center justify-center font-bold text-bloom-600 text-sm">
+                            {patientProfile.full_name?.[0]?.toUpperCase()}
                           </div>
-                        )}
+                          <div className="min-w-0 flex-1">
+                            <h4 className="font-extrabold text-xs text-slate-800 truncate">{patientProfile.full_name}</h4>
+                            <p className="text-[10px] text-slate-400 font-semibold">{patientProfile.email}</p>
+                          </div>
+                        </div>
 
-                        <button
-                          onClick={handleSaveTreatment}
-                          disabled={savingTreatment || !dietTitle.trim()}
-                          className="w-full h-9 bg-bloom-gradient text-white text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 shadow-md active:scale-98 transition disabled:opacity-50"
-                        >
-                          <Save className="h-3.5 w-3.5" />
-                          {savingTreatment ? 'Saving changes...' : 'Save Treatment Plan'}
-                        </button>
+                        {/* Vitals Grid */}
+                        <div className="grid grid-cols-3 gap-2">
+                          <div className="bg-slate-50 rounded-xl p-2 border border-slate-200/50 flex flex-col items-center text-center">
+                            <Weight className="h-4 w-4 text-bloom-600" />
+                            <span className="text-[11px] font-black text-slate-800 mt-1">{patientProfile.weight_kg ? `${patientProfile.weight_kg} kg` : '--'}</span>
+                            <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wide">Weight</span>
+                          </div>
+                          <div className="bg-slate-50 rounded-xl p-2 border border-slate-200/50 flex flex-col items-center text-center">
+                            <Ruler className="h-4 w-4 text-bloom-600" />
+                            <span className="text-[11px] font-black text-slate-800 mt-1">{patientProfile.height_cm ? `${patientProfile.height_cm} cm` : '--'}</span>
+                            <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wide">Height</span>
+                          </div>
+                          <div className="bg-slate-50 rounded-xl p-2 border border-slate-200/50 flex flex-col items-center text-center">
+                            <User className="h-4 w-4 text-bloom-600" />
+                            <span className="text-[11px] font-black text-slate-800 mt-1 text-center">
+                              {patientProfile.date_of_birth ? `${calculateAge(patientProfile.date_of_birth)} yrs` : '--'}
+                            </span>
+                            <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wide">Age</span>
+                          </div>
+                        </div>
+
+                        {/* Extra profile details: Blood group & Medical conditions */}
+                        <div className="bg-slate-50 rounded-xl p-3 border border-slate-200/50 space-y-2.5">
+                          <div className="flex justify-between items-center text-[10px]">
+                            <span className="font-bold text-slate-400 uppercase tracking-wide">Blood Group</span>
+                            <span className="font-extrabold text-slate-800">{patientProfile.blood_group || '--'}</span>
+                          </div>
+                          <div className="border-t border-slate-200/60 pt-2">
+                            <span className="font-bold text-slate-400 uppercase tracking-wide text-[8px] block mb-1">Existing Conditions / Symptoms</span>
+                            <p className="text-[10px] font-semibold text-slate-700 leading-normal">
+                              {patientProfile.medical_conditions || 'None declared'}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Uploaded Reports & Records */}
+                        <div className="space-y-2 pt-1">
+                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Medical Reports</p>
+                          {patientRecords.length > 0 ? (
+                            <div className="space-y-1.5 max-h-48 overflow-y-auto scrollbar-hide">
+                              {patientRecords.map((rec: any) => (
+                                <div key={rec.id} className="p-2 bg-slate-50 border border-slate-200/50 rounded-xl flex items-center justify-between gap-2">
+                                  <div className="min-w-0 flex-1 flex items-center gap-1.5">
+                                    <FileText className="h-3.5 w-3.5 text-bloom-500 shrink-0" />
+                                    <span className="text-[10px] font-bold text-slate-700 truncate">{rec.file_name || rec.record_type}</span>
+                                  </div>
+                                  {rec.file_url && (
+                                    <button
+                                      type="button"
+                                      onClick={() => openMedicalReport(rec.file_url, rec.file_name)}
+                                      className="text-[9px] font-bold text-bloom-600 bg-bloom-50 px-2.5 py-1 rounded-md hover:bg-bloom-100"
+                                    >
+                                      View
+                                    </button>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-[10px] text-slate-400 italic">No health records uploaded.</p>
+                          )}
+                        </div>
                       </div>
-                    </div>
+                    )}
+
+                    {/* TAB 2: DIET PLAN */}
+                    {doctorActiveTab === 'diet' && (
+                      <div className="space-y-3 animate-in fade-in duration-200">
+                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1">
+                          <Apple className="w-3.5 h-3.5 text-bloom-600" />
+                          <span>Prescribe Diet & Lifestyle</span>
+                        </p>
+
+                        <div className="space-y-2.5">
+                          <div>
+                            <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block mb-0.5">Plan Title *</label>
+                            <input
+                              type="text"
+                              value={dietTitle}
+                              onChange={e => setDietTitle(e.target.value)}
+                              placeholder="e.g. Hormonal Regulating Plan"
+                              className="w-full h-8 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-bloom-300"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block mb-0.5">Diet Guidelines (One per line)</label>
+                            <textarea
+                              rows={5}
+                              value={dietGuidelines}
+                              onChange={e => setDietGuidelines(e.target.value)}
+                              placeholder="Guidelines here..."
+                              className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-800 focus:outline-none focus:ring-1 focus:ring-bloom-300 resize-none"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block mb-0.5">Medications & Supplements</label>
+                            <textarea
+                              rows={3}
+                              value={medications}
+                              onChange={e => setMedications(e.target.value)}
+                              placeholder="e.g. Supplement 2g daily..."
+                              className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-800 focus:outline-none focus:ring-1 focus:ring-bloom-300 resize-none font-semibold"
+                            />
+                          </div>
+
+                          {/* Meal Structure & Alternatives */}
+                          <div className="pt-2 border-t border-slate-200/80 space-y-2">
+                            <label className="text-[9px] font-extrabold text-[#5b21b6] uppercase tracking-wider block">
+                              Meal Structure & Alternatives
+                            </label>
+
+                            {/* Breakfast */}
+                            <div className="p-2 bg-slate-50 rounded-xl border border-slate-200/60 space-y-1">
+                              <span className="text-[9px] font-bold text-[#9d174d] uppercase">Breakfast</span>
+                              <input
+                                type="text"
+                                value={breakfastPrimary}
+                                onChange={e => setBreakfastPrimary(e.target.value)}
+                                placeholder="Primary Breakfast Option..."
+                                className="w-full h-7 rounded-lg border border-slate-200 bg-white px-2 text-[11px] font-semibold text-slate-800"
+                              />
+                              <input
+                                type="text"
+                                value={breakfastAlt}
+                                onChange={e => setBreakfastAlt(e.target.value)}
+                                placeholder="Alternative Breakfast Option..."
+                                className="w-full h-7 rounded-lg border border-emerald-200/80 bg-white px-2 text-[11px] font-medium text-emerald-800"
+                              />
+                            </div>
+
+                            {/* Lunch */}
+                            <div className="p-2 bg-slate-50 rounded-xl border border-slate-200/60 space-y-1">
+                              <span className="text-[9px] font-bold text-[#9d174d] uppercase">Lunch</span>
+                              <input
+                                type="text"
+                                value={lunchPrimary}
+                                onChange={e => setLunchPrimary(e.target.value)}
+                                placeholder="Primary Lunch Option..."
+                                className="w-full h-7 rounded-lg border border-slate-200 bg-white px-2 text-[11px] font-semibold text-slate-800"
+                              />
+                              <input
+                                type="text"
+                                value={lunchAlt}
+                                onChange={e => setLunchAlt(e.target.value)}
+                                placeholder="Alternative Lunch Option..."
+                                className="w-full h-7 rounded-lg border border-emerald-200/80 bg-white px-2 text-[11px] font-medium text-emerald-800"
+                              />
+                            </div>
+
+                            {/* Snack */}
+                            <div className="p-2 bg-slate-50 rounded-xl border border-slate-200/60 space-y-1">
+                              <span className="text-[9px] font-bold text-[#9d174d] uppercase">Snack</span>
+                              <input
+                                type="text"
+                                value={snackPrimary}
+                                onChange={e => setSnackPrimary(e.target.value)}
+                                placeholder="Primary Snack Option..."
+                                className="w-full h-7 rounded-lg border border-slate-200 bg-white px-2 text-[11px] font-semibold text-slate-800"
+                              />
+                              <input
+                                type="text"
+                                value={snackAlt}
+                                onChange={e => setSnackAlt(e.target.value)}
+                                placeholder="Alternative Snack Option..."
+                                className="w-full h-7 rounded-lg border border-emerald-200/80 bg-white px-2 text-[11px] font-medium text-emerald-800"
+                              />
+                            </div>
+
+                            {/* Dinner */}
+                            <div className="p-2 bg-slate-50 rounded-xl border border-slate-200/60 space-y-1">
+                              <span className="text-[9px] font-bold text-[#9d174d] uppercase">Dinner</span>
+                              <input
+                                type="text"
+                                value={dinnerPrimary}
+                                onChange={e => setDinnerPrimary(e.target.value)}
+                                placeholder="Primary Dinner Option..."
+                                className="w-full h-7 rounded-lg border border-slate-200 bg-white px-2 text-[11px] font-semibold text-slate-800"
+                              />
+                              <input
+                                type="text"
+                                value={dinnerAlt}
+                                onChange={e => setDinnerAlt(e.target.value)}
+                                placeholder="Alternative Dinner Option..."
+                                className="w-full h-7 rounded-lg border border-emerald-200/80 bg-white px-2 text-[11px] font-medium text-emerald-800"
+                              />
+                            </div>
+                          </div>
+
+                          {saveSuccess && (
+                            <div className="flex items-center gap-1.5 text-[10px] font-bold text-green-700 bg-green-50 p-2 rounded-lg border border-green-100">
+                              <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
+                              {saveSuccess}
+                            </div>
+                          )}
+
+                          <button
+                            onClick={handleSaveTreatment}
+                            disabled={savingTreatment || !dietTitle.trim()}
+                            className="w-full h-9 bg-bloom-gradient text-white text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 shadow-md active:scale-98 transition disabled:opacity-50"
+                          >
+                            <Save className="h-3.5 w-3.5" />
+                            {savingTreatment ? 'Saving changes...' : 'Save Diet Plan'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* TAB 3: PRESCRIPTION PDF GENERATOR */}
+                    {doctorActiveTab === 'prescription' && (
+                      <div className="space-y-3.5 animate-in fade-in duration-200">
+                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1">
+                          <HeartPulse className="w-3.5 h-3.5 text-bloom-600" />
+                          <span>Generate PDF Prescription</span>
+                        </p>
+
+                        <div className="space-y-3">
+                          <div>
+                            <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block mb-0.5">Medications & Dosage *</label>
+                            <textarea
+                              rows={4}
+                              value={rxMedication}
+                              onChange={e => setRxMedication(e.target.value)}
+                              placeholder="e.g.&#10;1. Metformin 500mg - 1 Tab daily after lunch&#10;2. Thyroxine 50mcg - 1 Tab empty stomach"
+                              className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-bloom-300 resize-none"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block mb-0.5">Instructions & Advice</label>
+                            <textarea
+                              rows={3}
+                              value={rxInstructions}
+                              onChange={e => setRxInstructions(e.target.value)}
+                              placeholder="e.g. Walk 30 mins daily, repeat blood tests in 4 weeks."
+                              className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-800 focus:outline-none focus:ring-1 focus:ring-bloom-300 resize-none"
+                            />
+                          </div>
+
+                          <div className="flex items-center gap-2 py-1">
+                            <input
+                              type="checkbox"
+                              id="sign-check"
+                              checked={rxIsSigning}
+                              onChange={e => setRxIsSigning(e.target.checked)}
+                              className="h-4 w-4 rounded border-slate-300 text-bloom-600 focus:ring-bloom-300 cursor-pointer"
+                            />
+                            <label htmlFor="sign-check" className="text-[10px] font-bold text-slate-600 cursor-pointer">
+                              Sign prescription as Dr. Deeba Madhavan
+                            </label>
+                          </div>
+
+                          {rxSuccess && (
+                            <div className="flex items-center gap-1.5 text-[10px] font-bold text-green-700 bg-green-50 p-2 rounded-lg border border-green-100 animate-in fade-in">
+                              <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
+                              {rxSuccess}
+                            </div>
+                          )}
+
+                          <button
+                            onClick={handleSendPrescription}
+                            disabled={rxSending || !rxMedication.trim()}
+                            className="w-full h-9 bg-gradient-to-r from-purple-700 to-pink-600 hover:from-purple-800 hover:to-pink-700 text-white text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 shadow-md active:scale-98 transition disabled:opacity-50"
+                          >
+                            <FileText className="h-3.5 w-3.5" />
+                            {rxSending ? 'Generating PDF...' : 'Sign & Send Prescription'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </>
                 ) : (
                   <p className="text-[10px] text-slate-400 italic text-center py-6">Unable to resolve patient details.</p>
@@ -504,7 +1060,7 @@ export function VideoRoomModal({
           {/* Center Action Controls */}
           <div className="flex items-center gap-3">
             <button
-              onClick={() => setMicOn(!micOn)}
+              onClick={handleToggleMic}
               className={cn(
                 'w-12 h-12 rounded-2xl flex items-center justify-center transition-all shadow-md',
                 micOn ? 'bg-slate-800 text-white hover:bg-slate-700' : 'bg-red-600 text-white hover:bg-red-700'
@@ -514,7 +1070,7 @@ export function VideoRoomModal({
             </button>
 
             <button
-              onClick={() => setCameraOn(!cameraOn)}
+              onClick={handleToggleCamera}
               className={cn(
                 'w-12 h-12 rounded-2xl flex items-center justify-center transition-all shadow-md',
                 cameraOn ? 'bg-slate-800 text-white hover:bg-slate-700' : 'bg-red-600 text-white hover:bg-red-700'

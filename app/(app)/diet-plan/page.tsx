@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { Apple, Clipboard, ArrowRight, ShieldCheck, Dumbbell, Sparkles, Loader2, FileCheck } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { useAuth } from '@/components/auth-provider';
+import { cn } from '@/lib/utils';
 
 export default function DietPlanPage() {
   const { profile, refreshProfile } = useAuth();
@@ -19,11 +20,16 @@ export default function DietPlanPage() {
   const [symptoms, setSymptoms] = useState('');
   const [fileName, setFileName] = useState('');
 
+  const [activePlan, setActivePlan] = useState<any>(null);
+
   const loadPlans = async () => {
     try {
       setLoading(true);
       const res = await apiFetch('/diet/patient');
-      setPlans(res.diet_plans || []);
+      const plansList = res.diet_plans || [];
+      const plan = res.active_plan || plansList.find((p: any) => p.source === 'doctor' || p.is_doctor_assigned) || plansList[0] || null;
+      setPlans(plansList);
+      setActivePlan(plan);
     } catch (err) {
       console.error('Failed to load diet plans', err);
     } finally {
@@ -86,6 +92,7 @@ export default function DietPlanPage() {
       }
 
       if (res.diet_plan) {
+        setActivePlan(res.diet_plan);
         setPlans([res.diet_plan, ...plans]);
       }
     } catch (err) {
@@ -104,7 +111,7 @@ export default function DietPlanPage() {
     );
   }
 
-  const activePlan = plans[0];
+  const isDoctorPlan = activePlan && (activePlan.source === 'doctor' || activePlan.is_doctor_assigned || (activePlan.doctor_id && activePlan.doctor_id !== activePlan.patient_id));
 
   return (
     <div className="pb-28 max-w-[640px] mx-auto px-4 pt-6 space-y-6">
@@ -112,13 +119,19 @@ export default function DietPlanPage() {
       {/* Header */}
       <div>
         <span className="text-[11px] font-extrabold text-[#9d174d] uppercase tracking-widest bg-pink-100/70 px-3 py-1 rounded-full">
-          Clinical Nutrition
+          {isDoctorPlan ? 'Prescribed Clinical Diet' : 'Clinical Nutrition'}
         </span>
         <h1 className="text-2xl font-black text-slate-800 font-playfair tracking-tight mt-2">
-          Your Personalized Diet Plan
+          {isDoctorPlan
+            ? `Diet Plan from ${activePlan.doctor_name || 'Dr. Deepa Madhavan'}`
+            : activePlan
+            ? 'AI-Suggested Wellness Plan'
+            : 'Your Personalized Diet Plan'}
         </h1>
         <p className="text-xs text-slate-500 font-medium mt-1">
-          Custom clinical nutrition formulated by AI and personalized by Dr. Deepa Madhavan.
+          {isDoctorPlan
+            ? `Official clinical nutrition plan prescribed specifically for you by ${activePlan.doctor_name || 'Dr. Deepa Madhavan'}.`
+            : 'Custom clinical nutrition formulated by AI to balance your hormones.'}
         </p>
       </div>
 
@@ -140,8 +153,11 @@ export default function DietPlanPage() {
                 <Apple className="w-5 h-5 text-emerald-600" />
                 <h2 className="font-bold text-slate-800 text-base font-playfair">{activePlan.title}</h2>
               </div>
-              <span className="text-[10px] font-extrabold bg-emerald-100 text-emerald-700 px-2.5 py-0.5 rounded-full">
-                {activePlan.doctor_id || activePlan.is_doctor_assigned ? 'Assigned by Dr. Deepa' : 'Active Plan'}
+              <span className={cn(
+                "text-[10px] font-extrabold px-2.5 py-0.5 rounded-full",
+                isDoctorPlan ? "bg-purple-100 text-[#5b21b6]" : "bg-emerald-100 text-emerald-700"
+              )}>
+                {isDoctorPlan ? `Assigned by ${activePlan.doctor_name || 'Dr. Deepa'}` : 'AI Self-Generated'}
               </span>
             </div>
 

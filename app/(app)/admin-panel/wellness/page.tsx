@@ -287,9 +287,9 @@ export default function AdminWellnessCrudPage() {
       {/* Add Category Modal */}
       {showAddCategoryModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-[32px] p-6 max-w-md w-full space-y-4 shadow-2xl">
-            <h3 className="text-base font-bold text-slate-800 font-playfair">Add Condition Category</h3>
-            <form onSubmit={handleCreateCategory} className="space-y-3 text-xs">
+          <div className="bg-white rounded-[32px] p-6 max-w-md w-full flex flex-col max-h-[90vh] shadow-2xl overflow-hidden">
+            <h3 className="text-base font-bold text-slate-800 font-playfair mb-3 shrink-0">Add Condition Category</h3>
+            <form onSubmit={handleCreateCategory} className="flex-1 overflow-y-auto space-y-3 text-xs scrollbar-hide">
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Category Title</label>
                 <input
@@ -311,11 +311,11 @@ export default function AdminWellnessCrudPage() {
                   className="w-full rounded-xl border border-slate-200 p-3 font-medium text-slate-800 focus:outline-none"
                 />
               </div>
-              <div className="flex gap-2 pt-2">
+              <div className="flex gap-2 pt-3 shrink-0 sticky bottom-0 bg-white border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setShowAddCategoryModal(false)}
-                  className="w-1/2 h-10 text-slate-500 font-bold rounded-xl"
+                  className="w-1/2 h-10 text-slate-500 font-bold rounded-xl border border-slate-200 hover:bg-slate-50"
                 >
                   Cancel
                 </button>

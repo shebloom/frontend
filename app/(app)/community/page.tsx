@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Heart, MessageCircle, Plus, Users, X, Send, Trash2, ShieldAlert } from 'lucide-react';
+import { Heart, MessageCircle, Plus, Users, X, Send, Trash2, EyeOff, Eye, CornerDownRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { apiFetch } from '@/lib/api';
 import { useAuth } from '@/components/auth-provider';
@@ -28,6 +28,11 @@ export default function CommunityPage() {
   const [comments, setComments] = useState<any[]>([]);
   const [newComment, setNewComment] = useState('');
   const [submittingComment, setSubmittingComment] = useState(false);
+
+  // Reply state — tracks which comment has an open reply box
+  const [replyingTo, setReplyingTo] = useState<string | null>(null);
+  const [replyContent, setReplyContent] = useState('');
+  const [submittingReply, setSubmittingReply] = useState(false);
 
   useEffect(() => {
     loadPosts();
@@ -81,7 +86,6 @@ export default function CommunityPage() {
         else next.delete(postId);
         return next;
       });
-      // Refresh count locally
       setPosts(posts.map(p => {
         if (p.id === postId) {
           return {
@@ -96,9 +100,11 @@ export default function CommunityPage() {
     }
   };
 
-  // Comments drawer trigger
+  // Open comments drawer and load post + comments
   const openComments = async (post: any) => {
     setSelectedPost(post);
+    setReplyingTo(null);
+    setReplyContent('');
     try {
       const res = await apiFetch(`/community/posts/${post.id}`);
       setComments(res.comments || []);
@@ -118,7 +124,6 @@ export default function CommunityPage() {
       });
       setComments([...comments, res.comment]);
       setNewComment('');
-      // Update count locally
       setPosts(posts.map(p => {
         if (p.id === selectedPost.id) {
           return { ...p, comments: (p.comments || 0) + 1 };
@@ -132,7 +137,42 @@ export default function CommunityPage() {
     }
   };
 
-  // ADMIN CONTROL: Deactivate post (take down)
+  const handleAddReply = async (e: React.FormEvent, commentId: string) => {
+    e.preventDefault();
+    if (!replyContent.trim() || !selectedPost) return;
+    setSubmittingReply(true);
+    try {
+      const res = await apiFetch(
+        `/community/posts/${selectedPost.id}/comments/${commentId}/replies`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ content: replyContent })
+        }
+      );
+      // Append reply to the correct comment
+      setComments(comments.map(c => {
+        if (c.id === commentId) {
+          return { ...c, replies: [...(c.replies || []), res.reply] };
+        }
+        return c;
+      }));
+      setReplyContent('');
+      setReplyingTo(null);
+      // Increment post comment count
+      setPosts(posts.map(p => {
+        if (p.id === selectedPost.id) {
+          return { ...p, comments: (p.comments || 0) + 1 };
+        }
+        return p;
+      }));
+    } catch (err) {
+      alert('Failed to post reply');
+    } finally {
+      setSubmittingReply(false);
+    }
+  };
+
+  // ADMIN: Take down post
   const handleTakeDownPost = async (postId: string) => {
     if (!confirm('Are you sure you want to take down this post for violating community guidelines?')) return;
     try {
@@ -142,29 +182,79 @@ export default function CommunityPage() {
       });
       setPosts(posts.filter(p => p.id !== postId));
       if (selectedPost?.id === postId) setSelectedPost(null);
-      alert('Post has been successfully taken down.');
     } catch (err) {
       alert('Failed to take down post');
     }
   };
 
-  // ADMIN CONTROL: Delete comment
+  // ADMIN: Delete comment permanently
   const handleDeleteComment = async (commentId: string) => {
-    if (!confirm('Are you sure you want to delete this comment?')) return;
+    if (!confirm('Permanently delete this comment and all its replies?')) return;
     try {
-      await apiFetch(`/admin/comments/${commentId}`, {
-        method: 'DELETE'
-      });
+      await apiFetch(`/admin/comments/${commentId}`, { method: 'DELETE' });
       setComments(comments.filter(c => c.id !== commentId));
-      // Update count locally
       setPosts(posts.map(p => {
-        if (p.id === selectedPost.id) {
+        if (p.id === selectedPost?.id) {
           return { ...p, comments: Math.max(0, (p.comments || 0) - 1) };
         }
         return p;
       }));
     } catch (err) {
       alert('Failed to delete comment');
+    }
+  };
+
+  // ADMIN: Hide/unhide comment
+  const handleToggleHideComment = async (commentId: string, currentlyHidden: boolean) => {
+    try {
+      await apiFetch(`/admin/comments/${commentId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ is_hidden: !currentlyHidden })
+      });
+      setComments(comments.map(c =>
+        c.id === commentId ? { ...c, is_hidden: !currentlyHidden } : c
+      ));
+    } catch (err) {
+      alert('Failed to update comment visibility');
+    }
+  };
+
+  // ADMIN: Delete reply permanently
+  const handleDeleteReply = async (commentId: string, replyId: string) => {
+    if (!confirm('Permanently delete this reply?')) return;
+    try {
+      await apiFetch(`/admin/replies/${replyId}`, { method: 'DELETE' });
+      setComments(comments.map(c => {
+        if (c.id === commentId) {
+          return { ...c, replies: (c.replies || []).filter((r: any) => r.id !== replyId) };
+        }
+        return c;
+      }));
+    } catch (err) {
+      alert('Failed to delete reply');
+    }
+  };
+
+  // ADMIN: Hide/unhide reply
+  const handleToggleHideReply = async (commentId: string, replyId: string, currentlyHidden: boolean) => {
+    try {
+      await apiFetch(`/admin/replies/${replyId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ is_hidden: !currentlyHidden })
+      });
+      setComments(comments.map(c => {
+        if (c.id === commentId) {
+          return {
+            ...c,
+            replies: (c.replies || []).map((r: any) =>
+              r.id === replyId ? { ...r, is_hidden: !currentlyHidden } : r
+            )
+          };
+        }
+        return c;
+      }));
+    } catch (err) {
+      alert('Failed to update reply visibility');
     }
   };
 
@@ -180,7 +270,6 @@ export default function CommunityPage() {
         </div>
         <p className="mt-0.5 text-xs font-semibold text-slate-400">You are not alone · Join our discussions 💜</p>
 
-        {/* Topic filters - flex-wrap, no scrollbar */}
         <div className="mt-4 flex flex-wrap gap-2">
           {topics.map((t) => (
             <button
@@ -227,8 +316,7 @@ export default function CommunityPage() {
                       {new Date(post.created_at).toLocaleDateString()}
                     </p>
                   </div>
-                  
-                  {/* Topic badge */}
+
                   <span className="rounded-full bg-bloom-50 px-2 py-0.5 text-[9px] font-bold text-bloom-600">
                     {post.topic}
                   </span>
@@ -267,7 +355,7 @@ export default function CommunityPage() {
                       {post.likes || 0}
                     </span>
                   </button>
-                  
+
                   <button
                     onClick={() => openComments(post)}
                     className="flex items-center gap-1.5 text-xs text-slate-400 transition hover:text-bloom-600 font-bold"
@@ -285,23 +373,24 @@ export default function CommunityPage() {
       {/* Floating Create FAB */}
       <button
         onClick={() => setIsNewPostOpen(true)}
-        className="fixed bottom-24 right-6 flex h-12 w-12 items-center justify-center rounded-full bg-bloom-gradient text-white shadow-bloom-btn transition hover:brightness-105 active:scale-95 z-20"
+        className="fixed bottom-36 right-6 flex h-12 w-12 items-center justify-center rounded-full bg-bloom-gradient text-white shadow-bloom-btn transition hover:brightness-105 active:scale-95 z-30"
+        title="Start a new conversation"
       >
         <Plus className="h-5 w-5" />
       </button>
 
-      {/* NEW POST MODAL - fixed position so it works even when scrolled */}
+      {/* NEW POST MODAL */}
       {isNewPostOpen && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-end justify-center p-4">
-          <div className="w-full max-w-[414px] bg-white rounded-3xl p-5 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-bloom-50 pb-2">
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4">
+          <div className="w-full max-w-[414px] bg-white rounded-3xl p-5 shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
+            <div className="flex items-center justify-between border-b border-bloom-50 pb-3 shrink-0">
               <h3 className="font-bold text-slate-800 text-sm">Start a Conversation</h3>
               <button onClick={() => setIsNewPostOpen(false)} className="text-slate-400 hover:text-slate-600">
                 <X size={18} />
               </button>
             </div>
 
-            <form onSubmit={handleCreatePost} className="space-y-3">
+            <form onSubmit={handleCreatePost} className="flex-1 overflow-y-auto pt-3 space-y-3 scrollbar-hide">
               <div>
                 <label className="text-[10px] font-bold text-slate-400 block mb-2">Select Topic</label>
                 <div className="flex flex-wrap gap-2">
@@ -345,13 +434,15 @@ export default function CommunityPage() {
                 />
               </div>
 
-              <button
-                type="submit"
-                disabled={submittingPost}
-                className="w-full h-11 bg-bloom-gradient rounded-full text-xs font-bold text-white shadow-bloom-btn disabled:opacity-75"
-              >
-                {submittingPost ? 'Posting...' : 'Post to Community'}
-              </button>
+              <div className="pt-2 shrink-0 sticky bottom-0 bg-white">
+                <button
+                  type="submit"
+                  disabled={submittingPost}
+                  className="w-full h-11 bg-bloom-gradient rounded-full text-xs font-bold text-white shadow-bloom-btn disabled:opacity-75"
+                >
+                  {submittingPost ? 'Posting...' : 'Post to Community'}
+                </button>
+              </div>
             </form>
           </div>
         </div>
@@ -359,10 +450,10 @@ export default function CommunityPage() {
 
       {/* COMMENTS DRAWER / OVERLAY */}
       {selectedPost && (
-        <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex flex-col justify-end">
-          <div className="w-full bg-white rounded-t-3xl max-h-[80%] flex flex-col animate-in slide-in-from-bottom duration-250">
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex flex-col justify-end">
+          <div className="w-full bg-white rounded-t-3xl max-h-[90vh] flex flex-col animate-in slide-in-from-bottom duration-250 overflow-hidden">
             {/* Drawer Header */}
-            <div className="p-4 border-b border-bloom-50 flex items-start justify-between">
+            <div className="p-4 border-b border-bloom-50 flex items-start justify-between shrink-0">
               <div className="min-w-0 pr-4">
                 <span className="text-[9px] font-bold text-bloom-600 bg-bloom-50 rounded-full px-2 py-0.5">
                   {selectedPost.topic}
@@ -381,25 +472,145 @@ export default function CommunityPage() {
                 <p className="text-xs text-slate-400 text-center py-6">No answers yet. Share your thoughts below!</p>
               ) : (
                 comments.map((comment) => (
-                  <div key={comment.id} className="bg-white rounded-2xl p-3 border border-bloom-100/50 shadow-sm flex items-start gap-2.5">
-                    <div className="h-7 w-7 rounded-full bg-bloom-100 flex items-center justify-center font-bold text-[10px] text-bloom-600 shrink-0">
-                      {comment.users?.full_name?.charAt(0).toUpperCase() || 'M'}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] font-bold text-slate-800">{comment.users?.full_name || 'Anonymous'}</span>
-                        {isAdmin && (
+                  <div key={comment.id} className={cn(
+                    "bg-white rounded-2xl p-3 border shadow-sm",
+                    comment.is_hidden ? "border-amber-200 bg-amber-50/30 opacity-70" : "border-bloom-100/50"
+                  )}>
+                    {/* Comment header */}
+                    <div className="flex items-start gap-2.5">
+                      <div className="h-7 w-7 rounded-full bg-bloom-100 flex items-center justify-center font-bold text-[10px] text-bloom-600 shrink-0">
+                        {comment.users?.full_name?.charAt(0).toUpperCase() || 'M'}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[11px] font-bold text-slate-800">{comment.users?.full_name || 'Anonymous'}</span>
+                            {comment.is_hidden && (
+                              <span className="text-[9px] font-bold text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded-full">Hidden</span>
+                            )}
+                          </div>
+                          {/* Admin controls for comment */}
+                          {isAdmin && (
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                onClick={() => handleToggleHideComment(comment.id, comment.is_hidden)}
+                                className="text-amber-500 hover:text-amber-700 p-0.5 hover:bg-amber-50 rounded"
+                                title={comment.is_hidden ? 'Unhide Comment' : 'Hide Comment'}
+                              >
+                                {comment.is_hidden ? <Eye size={12} /> : <EyeOff size={12} />}
+                              </button>
+                              <button
+                                onClick={() => handleDeleteComment(comment.id)}
+                                className="text-red-500 hover:text-red-700 p-0.5 hover:bg-red-50 rounded"
+                                title="Delete Comment"
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                        <p className="text-xs text-slate-600 mt-1 leading-relaxed">{comment.content}</p>
+
+                        {/* Reply button */}
+                        {!comment.is_hidden && (
                           <button
-                            onClick={() => handleDeleteComment(comment.id)}
-                            className="text-red-500 hover:text-red-700 p-0.5 hover:bg-red-50 rounded"
-                            title="Delete Comment"
+                            onClick={() => {
+                              if (replyingTo === comment.id) {
+                                setReplyingTo(null);
+                                setReplyContent('');
+                              } else {
+                                setReplyingTo(comment.id);
+                                setReplyContent('');
+                              }
+                            }}
+                            className="mt-1.5 text-[10px] font-bold text-bloom-600 hover:text-bloom-800 flex items-center gap-1"
                           >
-                            <Trash2 size={12} />
+                            <CornerDownRight size={11} />
+                            Reply
                           </button>
                         )}
                       </div>
-                      <p className="text-xs text-slate-600 mt-1 leading-relaxed">{comment.content}</p>
                     </div>
+
+                    {/* Nested Replies */}
+                    {(comment.replies || []).length > 0 && (
+                      <div className="mt-2.5 ml-9 space-y-2">
+                        {(comment.replies || []).map((reply: any) => (
+                          <div key={reply.id} className={cn(
+                            "rounded-xl p-2.5 border",
+                            reply.is_hidden ? "bg-amber-50/50 border-amber-200 opacity-70" : "bg-slate-50 border-slate-200/60"
+                          )}>
+                            <div className="flex items-start gap-2">
+                              <div className="h-5 w-5 rounded-full bg-petal-100 flex items-center justify-center font-bold text-[8px] text-petal-700 shrink-0">
+                                {reply.users?.full_name?.charAt(0).toUpperCase() || 'M'}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center justify-between gap-1">
+                                  <div className="flex items-center gap-1">
+                                    <span className="text-[10px] font-bold text-slate-700">{reply.users?.full_name || 'Anonymous'}</span>
+                                    {reply.is_hidden && (
+                                      <span className="text-[8px] font-bold text-amber-600 bg-amber-100 px-1 py-0.5 rounded-full">Hidden</span>
+                                    )}
+                                  </div>
+                                  {/* Admin controls for reply */}
+                                  {isAdmin && (
+                                    <div className="flex items-center gap-0.5 shrink-0">
+                                      <button
+                                        onClick={() => handleToggleHideReply(comment.id, reply.id, reply.is_hidden)}
+                                        className="text-amber-500 hover:text-amber-700 p-0.5 hover:bg-amber-50 rounded"
+                                        title={reply.is_hidden ? 'Unhide Reply' : 'Hide Reply'}
+                                      >
+                                        {reply.is_hidden ? <Eye size={10} /> : <EyeOff size={10} />}
+                                      </button>
+                                      <button
+                                        onClick={() => handleDeleteReply(comment.id, reply.id)}
+                                        className="text-red-500 hover:text-red-700 p-0.5 hover:bg-red-50 rounded"
+                                        title="Delete Reply"
+                                      >
+                                        <Trash2 size={10} />
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                                <p className="text-[11px] text-slate-600 leading-relaxed">{reply.content}</p>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Reply Input Box (inline, appears under comment) */}
+                    {replyingTo === comment.id && (
+                      <form
+                        onSubmit={(e) => handleAddReply(e, comment.id)}
+                        className="mt-2.5 ml-9 flex gap-2 items-center"
+                      >
+                        <input
+                          type="text"
+                          autoFocus
+                          required
+                          placeholder={`Reply to ${comment.users?.full_name || 'this comment'}...`}
+                          value={replyContent}
+                          onChange={(e) => setReplyContent(e.target.value)}
+                          className="flex-1 h-8 rounded-lg border border-bloom-200 px-2.5 text-xs focus:ring-bloom-300 focus:outline-none bg-white"
+                        />
+                        <button
+                          type="submit"
+                          disabled={submittingReply}
+                          className="h-8 w-8 shrink-0 rounded-lg bg-bloom-600 flex items-center justify-center text-white hover:bg-bloom-700 active:scale-95 transition disabled:opacity-60"
+                        >
+                          <Send size={13} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setReplyingTo(null); setReplyContent(''); }}
+                          className="h-8 w-8 shrink-0 rounded-lg bg-slate-100 flex items-center justify-center text-slate-400 hover:bg-slate-200 transition"
+                        >
+                          <X size={13} />
+                        </button>
+                      </form>
+                    )}
                   </div>
                 ))
               )}

@@ -5,11 +5,8 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import {
   ArrowLeft,
   Send,
-  Phone,
-  Video,
   Paperclip,
   X,
-  PhoneOff,
   User as UserIcon,
   Calendar,
   FileText,
@@ -26,6 +23,8 @@ import {
 import { cn } from '@/lib/utils';
 import { apiFetch } from '@/lib/api';
 import { useAuth } from '@/components/auth-provider';
+import { supabase } from '@/lib/supabase';
+import { openMedicalReport } from '@/lib/reports';
 
 interface Message {
   id: string;
@@ -59,34 +58,21 @@ export default function ChatPage() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const openDataURL = (dataUrl: string, fileName: string = 'attachment') => {
-    try {
-      const parts = dataUrl.split(';base64,');
-      if (parts.length !== 2) {
-        window.open(dataUrl, '_blank');
-        return;
-      }
-      const contentType = parts[0].split(':')[1];
-      const raw = window.atob(parts[1]);
-      const rawLength = raw.length;
-      const uInt8Array = new Uint8Array(rawLength);
-      for (let i = 0; i < rawLength; ++i) {
-        uInt8Array[i] = raw.charCodeAt(i);
-      }
-      const blob = new Blob([uInt8Array], { type: contentType });
-      const url = URL.createObjectURL(blob);
-      
-      const w = window.open(url, '_blank');
-      if (!w) {
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = fileName;
-        a.click();
-      }
-    } catch (e) {
-      console.error('Failed to open data URL:', e);
-      window.open(dataUrl, '_blank');
+  const resolveSecureUrl = (url: string) => {
+    if (!url) return '';
+    if (url.startsWith('data:')) return url;
+    const token = localStorage.getItem('token') || '';
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
+    let cleanUrl = url;
+    if (url.startsWith('/api') && baseUrl.endsWith('/api')) {
+      cleanUrl = url.substring(4);
     }
+    const separator = cleanUrl.includes('?') ? '&' : '?';
+    return `${baseUrl}${cleanUrl}${separator}token=${token}`;
+  };
+
+  const openDataURL = (dataUrl: string, fileName: string = 'attachment') => {
+    openMedicalReport(dataUrl, fileName);
   };
   const pollRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -117,15 +103,6 @@ export default function ChatPage() {
   const [sendingRescheduleReq, setSendingRescheduleReq] = useState(false);
   const [acceptingRescheduleId, setAcceptingRescheduleId] = useState<string | null>(null);
 
-  // Call state
-  const [callActive, setCallActive] = useState(false);
-  const [callType, setCallType] = useState<'voice' | 'video'>('voice');
-  const [callDuration, setCallDuration] = useState(0);
-  const callTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const localVideoRef = useRef<HTMLVideoElement>(null);
-  const remoteVideoRef = useRef<HTMLVideoElement>(null);
-  const localStreamRef = useRef<MediaStream | null>(null);
-  const peerRef = useRef<RTCPeerConnection | null>(null);
 
   const isAiMode = otherUserId === 'ai' || otherUserId === '00000000-0000-0000-0000-0000000000a1';
 
@@ -347,12 +324,6 @@ export default function ChatPage() {
     }
   }, [messages]);
 
-  // Clean up call on unmount
-  useEffect(() => {
-    return () => {
-      endCall();
-    };
-  }, []);
 
   const handleSend = async () => {
     if (!input.trim()) return;
@@ -380,6 +351,25 @@ export default function ChatPage() {
             content: textToSend,
           }),
         });
+
+        try {
+          const channel = supabase.channel('shebloom-global-notifications');
+          channel.send({
+            type: 'broadcast',
+            event: 'new_chat_message',
+            payload: {
+              conversationId: realConversationId,
+              senderId: profile?.id,
+              senderName: profile?.full_name || (profile?.role === 'doctor' ? 'Dr. Deepa Madhavan' : 'Patient'),
+              senderAvatar: profile?.avatar_url,
+              recipientId: otherUserId,
+              content: textToSend,
+            },
+          });
+        } catch (bcErr) {
+          console.warn('Realtime message broadcast warning:', bcErr);
+        }
+
         await loadMessages(realConversationId);
       }
     } catch (err) {
@@ -397,14 +387,34 @@ export default function ChatPage() {
       const reader = new FileReader();
       reader.onloadend = async () => {
         const base64 = reader.result as string;
+        const attachmentContent = `📎 ${file.name}`;
         await apiFetch('/chat/messages', {
           method: 'POST',
           body: JSON.stringify({
             conversation_id: realConversationId,
-            content: `📎 ${file.name}`,
+            content: attachmentContent,
             attachment_url: base64,
           }),
         });
+
+        try {
+          const channel = supabase.channel('shebloom-global-notifications');
+          channel.send({
+            type: 'broadcast',
+            event: 'new_chat_message',
+            payload: {
+              conversationId: realConversationId,
+              senderId: profile?.id,
+              senderName: profile?.full_name || (profile?.role === 'doctor' ? 'Dr. Deepa Madhavan' : 'Patient'),
+              senderAvatar: profile?.avatar_url,
+              recipientId: otherUserId,
+              content: attachmentContent,
+            },
+          });
+        } catch (bcErr) {
+          console.warn('Realtime message broadcast warning:', bcErr);
+        }
+
         await loadMessages(realConversationId);
         setSending(false);
       };
@@ -452,120 +462,12 @@ export default function ChatPage() {
     }
   };
 
-  // ─── WebRTC Calling ──────────────────────────────────────────────────────
-  const startCall = async (type: 'voice' | 'video') => {
-    setCallType(type);
-    setCallActive(true);
-    setCallDuration(0);
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-        video: type === 'video',
-      });
-      localStreamRef.current = stream;
-
-      if (localVideoRef.current && type === 'video') {
-        localVideoRef.current.srcObject = stream;
-      }
-
-      // Create peer connection
-      const pc = new RTCPeerConnection({
-        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
-      });
-      peerRef.current = pc;
-
-      stream.getTracks().forEach((track) => {
-        pc.addTrack(track, stream);
-      });
-
-      pc.ontrack = (event) => {
-        if (remoteVideoRef.current) {
-          remoteVideoRef.current.srcObject = event.streams[0];
-        }
-      };
-
-      // Start call timer
-      callTimerRef.current = setInterval(() => {
-        setCallDuration((prev) => prev + 1);
-      }, 1000);
-    } catch (err) {
-      console.error('Failed to start call:', err);
-      alert('Could not access your camera/microphone. Please check permissions.');
-      setCallActive(false);
-    }
-  };
-
-  const endCall = () => {
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach((track) => track.stop());
-      localStreamRef.current = null;
-    }
-    if (peerRef.current) {
-      peerRef.current.close();
-      peerRef.current = null;
-    }
-    if (callTimerRef.current) {
-      clearInterval(callTimerRef.current);
-      callTimerRef.current = null;
-    }
-    setCallActive(false);
-    setCallDuration(0);
-  };
-
-  const formatDuration = (secs: number) => {
-    const m = Math.floor(secs / 60).toString().padStart(2, '0');
-    const s = (secs % 60).toString().padStart(2, '0');
-    return `${m}:${s}`;
-  };
-
   const computedBmi = patientProfile?.weight_kg && patientProfile?.height_cm
     ? (patientProfile.weight_kg / Math.pow(patientProfile.height_cm / 100, 2)).toFixed(1)
     : null;
 
   return (
     <div className="absolute inset-x-0 top-0 bottom-[80px] flex flex-col bg-lavender-100 overflow-hidden">
-      {/* Call Overlay */}
-      {callActive && (
-        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-gradient-to-b from-slate-900 to-bloom-900">
-          {callType === 'video' ? (
-            <>
-              <video
-                ref={remoteVideoRef}
-                autoPlay
-                playsInline
-                className="absolute inset-0 h-full w-full object-cover"
-              />
-              <video
-                ref={localVideoRef}
-                autoPlay
-                playsInline
-                muted
-                className="absolute bottom-24 right-4 h-36 w-28 rounded-2xl border-2 border-white/30 object-cover shadow-lg"
-              />
-            </>
-          ) : (
-            <>
-              <div className="h-24 w-24 rounded-full bg-bloom-200 flex items-center justify-center mb-6">
-                <Phone className="h-10 w-10 text-bloom-700" />
-              </div>
-              <h3 className="text-xl font-bold text-white">Voice Call</h3>
-              <p className="text-sm text-white/60 mt-1">Connected</p>
-            </>
-          )}
-
-          <p className="mt-4 text-2xl font-mono text-white/80 tracking-widest">
-            {formatDuration(callDuration)}
-          </p>
-
-          <button
-            onClick={endCall}
-            className="mt-8 flex h-16 w-16 items-center justify-center rounded-full bg-red-500 text-white shadow-lg transition active:scale-90"
-          >
-            <PhoneOff className="h-7 w-7" />
-          </button>
-        </div>
-      )}
 
       {/* Chat header */}
       <header className="flex items-center gap-3 border-b border-bloom-100 bg-white px-4 py-3 shadow-bloom-card z-10">
@@ -609,24 +511,7 @@ export default function ChatPage() {
             </button>
           )}
 
-          {isConfirmedBooking && (
-            <>
-              <button
-                onClick={() => startCall('voice')}
-                title="Voice Call"
-                className="flex h-9 w-9 items-center justify-center rounded-full text-bloom-600 hover:bg-bloom-50"
-              >
-                <Phone className="h-4.5 w-4.5" />
-              </button>
-              <button
-                onClick={() => startCall('video')}
-                title="Video Call"
-                className="flex h-9 w-9 items-center justify-center rounded-full text-bloom-600 hover:bg-bloom-50"
-              >
-                <Video className="h-4.5 w-4.5" />
-              </button>
-            </>
-          )}
+
 
           {profile?.role === 'doctor' && (
             <button
@@ -681,15 +566,23 @@ export default function ChatPage() {
                             src={msg.attachment_url}
                             alt="attachment"
                             className="rounded-xl max-h-48 object-cover cursor-pointer hover:opacity-95 transition"
-                            onClick={() => {
-                              const w = window.open();
-                              if (w) w.document.write('<img src="' + msg.attachment_url + '" style="max-width:100%"/>');
-                            }}
+                            onClick={() => openMedicalReport(msg.attachment_url!, msg.content || 'attachment_image')}
                           />
+                        ) : msg.attachment_url.startsWith('/api') || msg.attachment_url.includes('/documents/') ? (
+                          <button
+                            type="button"
+                            onClick={() => openMedicalReport(msg.attachment_url!, msg.content || 'prescription.pdf')}
+                            className={cn(
+                              'flex items-center gap-1.5 text-xs font-semibold underline bg-transparent border-0 cursor-pointer p-0 align-baseline',
+                              isMe ? 'text-white/90 hover:text-white' : 'text-bloom-600 hover:text-[#5b21b6]'
+                            )}
+                          >
+                            <Paperclip className="h-3.5 w-3.5" /> View Prescription
+                          </button>
                         ) : (
                           <button
                             type="button"
-                            onClick={() => openDataURL(msg.attachment_url!, msg.content || 'attachment')}
+                            onClick={() => openMedicalReport(msg.attachment_url!, msg.content || 'attachment')}
                             className={cn(
                               'flex items-center gap-1.5 text-xs font-semibold underline bg-transparent border-0 cursor-pointer p-0 align-baseline',
                               isMe ? 'text-white/90 hover:text-white' : 'text-bloom-600 hover:text-[#5b21b6]'
@@ -892,15 +785,14 @@ export default function ChatPage() {
                             <p className="text-[8px] text-slate-400 font-semibold">{new Date(rec.record_date).toLocaleDateString('en-GB')}</p>
                           </div>
                           {rec.file_url && (
-                            <a
-                              href={downloadUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              download={filename}
-                              className="h-7 w-7 rounded-lg hover:bg-bloom-100 flex items-center justify-center text-bloom-600 shrink-0"
+                            <button
+                              type="button"
+                              onClick={() => openMedicalReport(rec.file_url, rec.file_name || filename)}
+                              title="View Medical Report"
+                              className="h-7 w-7 rounded-lg hover:bg-bloom-100 flex items-center justify-center text-bloom-600 shrink-0 bg-transparent border-0 cursor-pointer"
                             >
                               <ExternalLink className="h-3.5 w-3.5" />
-                            </a>
+                            </button>
                           )}
                         </div>
                       );
@@ -917,8 +809,8 @@ export default function ChatPage() {
 
       {/* Input bar / lock banner */}
       <div className="border-t border-bloom-100 bg-white px-4 py-3 shrink-0">
-        {!isConfirmedBooking && profile?.role === 'patient' ? (
-          /* Locked State for Patients */
+        {!isConfirmedBooking && messages.length === 0 && !activeBooking && profile?.role === 'patient' ? (
+          /* Locked State for Patients with 0 history & 0 bookings */
           <div className="rounded-2xl bg-amber-50 border border-amber-200 px-4 py-3 flex gap-2.5 items-start">
             <Clock className="h-4.5 w-4.5 text-amber-600 shrink-0 mt-0.5" />
             <p className="text-[11px] text-amber-700 leading-normal font-semibold">
@@ -965,8 +857,8 @@ export default function ChatPage() {
       {/* Reschedule Consultation Modal */}
       {showRescheduleModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-[28px] p-6 max-w-md w-full shadow-2xl animate-in zoom-in-95 space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+          <div className="bg-white rounded-[28px] max-w-md w-full shadow-2xl animate-in zoom-in-95 flex flex-col max-h-[90vh] overflow-hidden">
+            <div className="flex items-center justify-between border-b border-slate-100 p-5 shrink-0 bg-slate-50">
               <div className="flex items-center gap-2">
                 <Calendar className="w-5 h-5 text-[#5b21b6]" />
                 <h3 className="font-bold text-slate-800 text-base">Request Consultation Reschedule</h3>
@@ -979,54 +871,56 @@ export default function ChatPage() {
               </button>
             </div>
 
-            <p className="text-xs text-slate-500 font-medium leading-relaxed">
-              Select a new date and available time slot. A reschedule proposal will be sent directly into chat for mutual agreement.
-            </p>
+            <div className="flex-1 overflow-y-auto p-5 space-y-4 scrollbar-hide">
+              <p className="text-xs text-slate-500 font-medium leading-relaxed">
+                Select a new date and available time slot. A reschedule proposal will be sent directly into chat for mutual agreement.
+              </p>
 
-            {/* Date Picker */}
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">Select New Date</label>
-              <input
-                type="date"
-                value={modalRescheduleDate}
-                onChange={(e) => setModalRescheduleDate(e.target.value)}
-                min={new Date().toISOString().split('T')[0]}
-                className="w-full h-11 rounded-xl border border-slate-200 px-3 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-bloom-300 focus:outline-none"
-              />
-            </div>
+              {/* Date Picker */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Select New Date</label>
+                <input
+                  type="date"
+                  value={modalRescheduleDate}
+                  onChange={(e) => setModalRescheduleDate(e.target.value)}
+                  min={new Date().toISOString().split('T')[0]}
+                  className="w-full h-11 rounded-xl border border-slate-200 px-3 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-bloom-300 focus:outline-none"
+                />
+              </div>
 
-            {/* Slots Grid */}
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1.5">Select Available Time Slot</label>
-              {loadingModalSlots ? (
-                <p className="text-xs text-slate-400 animate-pulse text-center py-4">Checking slots availability...</p>
-              ) : modalRescheduleSlots.length === 0 ? (
-                <p className="text-xs text-amber-700 bg-amber-50 p-3 rounded-xl text-center font-semibold border border-amber-100">No available slots on this date.</p>
-              ) : (
-                <div className="grid grid-cols-3 gap-2 max-h-40 overflow-y-auto p-1 scrollbar-hide">
-                  {modalRescheduleSlots.map((slot) => (
-                    <button
-                      key={slot.time}
-                      disabled={slot.isBooked}
-                      onClick={() => setModalSelectedSlot(slot.time)}
-                      className={cn(
-                        'py-2 px-2.5 rounded-xl text-xs font-bold border transition-all text-center',
-                        slot.isBooked
-                          ? 'bg-slate-100 text-slate-400 border-slate-200 line-through cursor-not-allowed opacity-50'
-                          : modalSelectedSlot === slot.time
-                          ? 'bg-[#5b21b6] text-white border-[#5b21b6] shadow-sm'
-                          : 'bg-white text-slate-700 border-slate-200 hover:border-[#5b21b6]'
-                      )}
-                    >
-                      {slot.time}
-                    </button>
-                  ))}
-                </div>
-              )}
+              {/* Slots Grid */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">Select Available Time Slot</label>
+                {loadingModalSlots ? (
+                  <p className="text-xs text-slate-400 animate-pulse text-center py-4">Checking slots availability...</p>
+                ) : modalRescheduleSlots.length === 0 ? (
+                  <p className="text-xs text-amber-700 bg-amber-50 p-3 rounded-xl text-center font-semibold border border-amber-100">No available slots on this date.</p>
+                ) : (
+                  <div className="grid grid-cols-3 gap-2 max-h-40 overflow-y-auto p-1 scrollbar-hide">
+                    {modalRescheduleSlots.map((slot) => (
+                      <button
+                        key={slot.time}
+                        disabled={slot.isBooked}
+                        onClick={() => setModalSelectedSlot(slot.time)}
+                        className={cn(
+                          'py-2 px-2.5 rounded-xl text-xs font-bold border transition-all text-center',
+                          slot.isBooked
+                            ? 'bg-slate-100 text-slate-400 border-slate-200 line-through cursor-not-allowed opacity-50'
+                            : modalSelectedSlot === slot.time
+                            ? 'bg-[#5b21b6] text-white border-[#5b21b6] shadow-sm'
+                            : 'bg-white text-slate-700 border-slate-200 hover:border-[#5b21b6]'
+                        )}
+                      >
+                        {slot.time}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Actions */}
-            <div className="flex gap-2 pt-2">
+            <div className="flex gap-2 p-4 border-t border-slate-100 shrink-0 bg-white">
               <button
                 onClick={() => setShowRescheduleModal(false)}
                 className="flex-1 h-11 border border-slate-200 rounded-full text-xs font-bold text-slate-600 hover:bg-slate-50"

@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation';
 import { BloomLogo, SectionHeader } from '@/components/shebloom';
 import { useAuth } from '@/components/auth-provider';
 import { apiFetch } from '@/lib/api';
+import { supabase } from '@/lib/supabase';
+import { openMedicalReport } from '@/lib/reports';
 import {
   Bell,
   MessageCircle,
@@ -92,6 +94,17 @@ export default function HomePage() {
   const [dietPlanTitle, setDietPlanTitle] = useState('');
   const [dietPlanNotes, setDietPlanNotes] = useState('');
   const [dietPlanDetails, setDietPlanDetails] = useState('');
+  
+  // Meal Structure & Alternatives state
+  const [dietBreakfast, setDietBreakfast] = useState('');
+  const [dietBreakfastAlt, setDietBreakfastAlt] = useState('');
+  const [dietLunch, setDietLunch] = useState('');
+  const [dietLunchAlt, setDietLunchAlt] = useState('');
+  const [dietSnack, setDietSnack] = useState('');
+  const [dietSnackAlt, setDietSnackAlt] = useState('');
+  const [dietDinner, setDietDinner] = useState('');
+  const [dietDinnerAlt, setDietDinnerAlt] = useState('');
+
   const [savingDiet, setSavingDiet] = useState(false);
   const [dietSaveSuccess, setDietSaveSuccess] = useState('');
 
@@ -106,6 +119,165 @@ export default function HomePage() {
   const [newEnd, setNewEnd] = useState('17:00');
   const [isSavingAvailability, setIsSavingAvailability] = useState(false);
   const [availabilitySuccess, setAvailabilitySuccess] = useState('');
+
+  const [tick, setTick] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => setTick(t => t + 1), 10000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const getCallWindowState = (appointment: any) => {
+    if (!appointment) return { isTooEarly: false, isJoinable: false, isPastGrace: false, status: '' };
+    
+    const [y, m, d] = (appointment.appointment_date || '').split('-').map(Number);
+    const [h, min] = (appointment.slot_time || '').split(':').map(Number);
+    const scheduledTime = new Date(y, (m || 1) - 1, d || 1, h || 0, min || 0, 0, 0);
+    const graceEnd = new Date(scheduledTime.getTime() + 10 * 60 * 1000);
+    const now = new Date();
+
+    const isTooEarly = now < scheduledTime;
+    const isJoinable = now >= scheduledTime && now <= graceEnd && ['confirmed', 'pending', 'rescheduled'].includes(appointment.status || appointment.display_status);
+    const isPastGrace = now > graceEnd || appointment.status === 'missed' || appointment.display_status === 'missed';
+
+    return {
+      isTooEarly,
+      isJoinable,
+      isPastGrace,
+      scheduledTime,
+      graceEnd,
+      status: appointment.display_status || appointment.status,
+    };
+  };
+
+  const isCallActive = (appointmentDate: string, slotTime: string, appointment?: any) => {
+    if (appointment) {
+      return getCallWindowState(appointment).isJoinable;
+    }
+    const [y, m, d] = (appointmentDate || '').split('-').map(Number);
+    const [h, min] = (slotTime || '').split(':').map(Number);
+    const scheduledTime = new Date(y, (m || 1) - 1, d || 1, h || 0, min || 0, 0, 0);
+    const graceEnd = new Date(scheduledTime.getTime() + 10 * 60 * 1000);
+    const now = new Date();
+    return now >= scheduledTime && now <= graceEnd;
+  };
+
+  const getCallButtonLabel = (appointmentDate: string, slotTime: string, appointment?: any) => {
+    const state = getCallWindowState(appointment || { appointment_date: appointmentDate, slot_time: slotTime });
+    if (state.isJoinable) {
+      return 'Join Video Call';
+    }
+    if (state.isPastGrace) {
+      return 'Call Expired';
+    }
+    const [hStr, mStr] = slotTime.split(':');
+    let h = parseInt(hStr, 10);
+    const m = mStr || '00';
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    h = h % 12;
+    h = h ? h : 12;
+    return `Available from ${h}:${m} ${ampm}`;
+  };
+
+  const handleJoinCall = async (appointmentId: string, appointment: any) => {
+    try {
+      const res = await apiFetch(`/appointments/${appointmentId}/join`);
+      if (res.joinable) {
+        const apptId = res.appointmentId || appointmentId;
+        const isDoctor = profile?.role === 'doctor';
+
+        // Determine exact recipient user ID from the API response
+        // patientId and doctorUserId are returned by the join endpoint
+        const recipientUserId = isDoctor
+          ? (res.patientId || appointment?.patient_id)
+          : (res.doctorUserId || appointment?.doctor_id);
+
+        console.log(`[Call] ${profile?.role} joining appointment ${apptId}. Notifying recipientId: ${recipientUserId}`);
+
+        // Broadcast to ISOLATED appointment-specific channel (not global)
+        // This prevents ANY other user from receiving this notification
+        try {
+          const roomChannel = supabase.channel(`appointment-room-${apptId}`, {
+            config: { broadcast: { self: false } },
+          });
+
+          // Wait for subscription before sending
+          await new Promise<void>((resolve) => {
+            roomChannel.subscribe((status) => {
+              if (status === 'SUBSCRIBED') resolve();
+            });
+          });
+
+          if (isDoctor) {
+            // Doctor joins → patient should be notified with "Doctor has joined"
+            console.log(`[Call] Doctor broadcasting incoming_call to patient ${recipientUserId} on appointment-room-${apptId}`);
+            roomChannel.send({
+              type: 'broadcast',
+              event: 'incoming_call',
+              payload: {
+                appointmentId: apptId,
+                callerId: profile?.id,
+                callerName: profile?.full_name || 'Dr. Deepa Madhavan',
+                callerAvatar: profile?.avatar_url,
+                recipientId: recipientUserId,
+                doctorId: profile?.id,
+                patientId: recipientUserId,
+                roomUrl: res.joinUrl,
+                date: appointment?.appointment_date,
+                slot: appointment?.slot_time,
+                expiresAt: Date.now() + 15 * 60 * 1000,
+              },
+            });
+          } else {
+            // Patient joins → doctor should be notified with "Patient is waiting"
+            console.log(`[Call] Patient broadcasting patient_is_waiting to doctor ${recipientUserId} on appointment-room-${apptId}`);
+            roomChannel.send({
+              type: 'broadcast',
+              event: 'patient_is_waiting',
+              payload: {
+                appointmentId: apptId,
+                callerId: profile?.id,
+                callerName: profile?.full_name || 'Patient',
+                callerAvatar: profile?.avatar_url,
+                recipientId: recipientUserId,
+                doctorId: recipientUserId,
+                patientId: profile?.id,
+                roomUrl: res.joinUrl,
+                date: appointment?.appointment_date,
+                slot: appointment?.slot_time,
+                expiresAt: Date.now() + 15 * 60 * 1000,
+              },
+            });
+          }
+        } catch (bcErr) {
+          console.warn('[Call] Realtime call broadcast error:', bcErr);
+        }
+
+        if (isDoctor) {
+          setDoctorVideoRoom({
+            url: res.joinUrl,
+            patientName: res.patientName,
+            patientId: res.patientId,
+            appointmentId: res.appointmentId,
+            date: appointment.appointment_date,
+            slot: appointment.slot_time,
+          });
+          setShowDoctorVideoModal(true);
+        } else {
+          setSelectedVideoRoom({
+            url: res.joinUrl,
+            doctorName: res.doctorName,
+            date: appointment.appointment_date,
+            slot: appointment.slot_time,
+          });
+          setShowVideoModal(true);
+        }
+      }
+    } catch (err: any) {
+      alert(err.message || 'Unable to join the call at this time.');
+    }
+
+  };
 
   useEffect(() => {
     const h = new Date().getHours();
@@ -133,6 +305,14 @@ export default function HomePage() {
     setDietPlanTitle('');
     setDietPlanNotes('');
     setDietPlanDetails('');
+    setDietBreakfast('');
+    setDietBreakfastAlt('');
+    setDietLunch('');
+    setDietLunchAlt('');
+    setDietSnack('');
+    setDietSnackAlt('');
+    setDietDinner('');
+    setDietDinnerAlt('');
     setExistingDietPlan(null);
     setDietSaveSuccess('');
     
@@ -144,23 +324,40 @@ export default function HomePage() {
       setSelectedPatientProfile(profileRes.patient);
       setSelectedPatientRecords(recordsRes.records || []);
       
-      // If there's an appointment, check for existing diet plan
-      if (appointment?.id) {
-        try {
-          const dietRes = await apiFetch(`/diet/appointment/${appointment.id}`);
-          if (dietRes.diet_plan) {
-            setExistingDietPlan(dietRes.diet_plan);
-            setDietPlanTitle(dietRes.diet_plan.title || '');
-            setDietPlanNotes(dietRes.diet_plan.notes || '');
-            setDietPlanDetails(
-              typeof dietRes.diet_plan.plan_details === 'string'
-                ? dietRes.diet_plan.plan_details
-                : JSON.stringify(dietRes.diet_plan.plan_details, null, 2)
-            );
-          }
-        } catch (e) {
-          // no diet plan yet, that's fine
+      // Fetch existing diet plan (pre-filling existing doctor or AI plan)
+      try {
+        let dietRes = appointment?.id ? await apiFetch(`/diet/appointment/${appointment.id}`) : null;
+        if (!dietRes?.diet_plan) {
+          dietRes = await apiFetch(`/diet/patient/${patientId}`);
         }
+        if (dietRes?.diet_plan) {
+          const dp = dietRes.diet_plan;
+          setExistingDietPlan(dp);
+          setDietPlanTitle(dp.title || '');
+          setDietPlanNotes(dp.notes || '');
+          const details = dp.plan_details || {};
+          const ms = details.meal_structure || {};
+          setDietBreakfast(ms.breakfast || '');
+          setDietBreakfastAlt(ms.breakfast_alternate || ms.breakfastAlternate || '');
+          setDietLunch(ms.lunch || '');
+          setDietLunchAlt(ms.lunch_alternate || ms.lunchAlternate || '');
+          setDietSnack(ms.snack || '');
+          setDietSnackAlt(ms.snack_alternate || ms.snackAlternate || '');
+          setDietDinner(ms.dinner || '');
+          setDietDinnerAlt(ms.dinner_alternate || ms.dinnerAlternate || '');
+
+          const guidelinesArr = details.guidelines
+            ? (Array.isArray(details.guidelines) ? details.guidelines.join('\n') : details.guidelines)
+            : '';
+          setDietPlanDetails(guidelinesArr);
+        } else {
+          setExistingDietPlan(null);
+          setDietPlanTitle('');
+          setDietPlanNotes('');
+          setDietPlanDetails('');
+        }
+      } catch (e) {
+        // no diet plan yet
       }
     } catch (err) {
       console.error('Failed to load patient records', err);
@@ -174,8 +371,21 @@ export default function HomePage() {
     setSavingDiet(true);
     setDietSaveSuccess('');
     try {
-      let parsedDetails: any = {};
-      try { parsedDetails = JSON.parse(dietPlanDetails); } catch { parsedDetails = { notes: dietPlanDetails }; }
+      const guidelinesParsed = dietPlanDetails.split('\n').filter(line => line.trim());
+      const parsedDetails: any = {
+        summary: `Custom clinical diet plan assigned by Dr. Deepa Madhavan.`,
+        guidelines: guidelinesParsed,
+        meal_structure: {
+          breakfast: dietBreakfast,
+          breakfast_alternate: dietBreakfastAlt,
+          lunch: dietLunch,
+          lunch_alternate: dietLunchAlt,
+          snack: dietSnack,
+          snack_alternate: dietSnackAlt,
+          dinner: dietDinner,
+          dinner_alternate: dietDinnerAlt,
+        },
+      };
       
       if (existingDietPlan?.id && !existingDietPlan.id.startsWith('diet-')) {
         // Update existing plan
@@ -225,6 +435,12 @@ export default function HomePage() {
     return Object.values(patientsMap);
   };
 
+  const parseApptTime = (dateStr: string, slotTimeStr: string) => {
+    const [y, m, d] = (dateStr || '').split('-').map(Number);
+    const [h, min] = (slotTimeStr || '').split(':').map(Number);
+    return new Date(y, (m || 1) - 1, d || 1, h || 0, min || 0, 0, 0);
+  };
+
   useEffect(() => {
     async function loadData() {
       try {
@@ -234,63 +450,43 @@ export default function HomePage() {
           apiFetch('/membership')
         ]);
         const list = apptsRes.appointments || [];
+        const now = new Date();
         
         if (profile?.role === 'doctor') {
-          const now = new Date();
-          const todayStr = now.toLocaleDateString('en-CA');
-          const nowMinutes = now.getHours() * 60 + now.getMinutes();
-          
           const upcoming = list.filter((a: any) => {
-            const isFutureDate = a.appointment_date > todayStr;
-            const isToday = a.appointment_date === todayStr;
-            let isFutureSlot = true;
-            if (isToday) {
-              const [h, m] = a.slot_time.split(':').map(Number);
-              const slotMinutes = h * 60 + (m || 0);
-              isFutureSlot = slotMinutes > nowMinutes;
-            }
-            
-            return (a.status === 'confirmed' || a.status === 'pending' || a.status === 'rescheduled') && 
-              (isFutureDate || (isToday && isFutureSlot));
+            const scheduled = parseApptTime(a.appointment_date, a.slot_time);
+            const graceEnd = new Date(scheduled.getTime() + 10 * 60 * 1000);
+            return now <= graceEnd && ['confirmed', 'pending', 'rescheduled'].includes(a.status || a.display_status);
           });
-          upcoming.sort((a: any, b: any) => a.appointment_date.localeCompare(b.appointment_date));
+          upcoming.sort((a: any, b: any) => parseApptTime(a.appointment_date, a.slot_time).getTime() - parseApptTime(b.appointment_date, b.slot_time).getTime());
           setUpcomingAppointments(upcoming);
           
-          const previous = list.filter((a: any) => {
-            const isPastDate = a.appointment_date < todayStr;
-            const isToday = a.appointment_date === todayStr;
-            let isPastSlot = false;
-            if (isToday) {
-              const [h, m] = a.slot_time.split(':').map(Number);
-              const slotMinutes = h * 60 + (m || 0);
-              isPastSlot = slotMinutes <= nowMinutes;
+          const previous = list.map((a: any) => {
+            const scheduled = parseApptTime(a.appointment_date, a.slot_time);
+            const graceEnd = new Date(scheduled.getTime() + 10 * 60 * 1000);
+            const isPast = now > graceEnd;
+            let status = a.display_status || a.status;
+            if (isPast && ['confirmed', 'pending', 'rescheduled'].includes(status)) {
+              status = 'missed';
             }
-            return a.status === 'completed' || a.status === 'cancelled' || 
-              ((a.status === 'confirmed' || a.status === 'pending' || a.status === 'rescheduled') && (isPastDate || (isToday && isPastSlot)));
+            return { ...a, status };
+          }).filter((a: any) => {
+            const scheduled = parseApptTime(a.appointment_date, a.slot_time);
+            const graceEnd = new Date(scheduled.getTime() + 10 * 60 * 1000);
+            return now > graceEnd || ['completed', 'cancelled', 'missed'].includes(a.status);
           });
+          previous.sort((a: any, b: any) => parseApptTime(b.appointment_date, b.slot_time).getTime() - parseApptTime(a.appointment_date, a.slot_time).getTime());
           setPreviousAppointments(previous);
         } else {
-          const now = new Date();
-          const todayStr = now.toLocaleDateString('en-CA');
-          const nowMinutes = now.getHours() * 60 + now.getMinutes();
-
           const activeList = list.filter((a: any) => {
-            if (a.status === 'completed' || a.status === 'cancelled') return false;
-            if (a.appointment_date < todayStr) return false;
-            if (a.appointment_date === todayStr) {
-              const [h, m] = a.slot_time.split(':').map(Number);
-              const slotMinutes = h * 60 + (m || 0);
-              return slotMinutes > nowMinutes;
-            }
-            return true;
+            const scheduled = parseApptTime(a.appointment_date, a.slot_time);
+            const graceEnd = new Date(scheduled.getTime() + 10 * 60 * 1000);
+            return now <= graceEnd && ['confirmed', 'pending', 'rescheduled'].includes(a.status || a.display_status);
           });
+          activeList.sort((a: any, b: any) => parseApptTime(a.appointment_date, a.slot_time).getTime() - parseApptTime(b.appointment_date, b.slot_time).getTime());
 
           setUpcomingAppointments(activeList);
-          if (activeList.length > 0) {
-            setUpcomingAppointment(activeList[0]);
-          } else {
-            setUpcomingAppointment(null);
-          }
+          setUpcomingAppointment(activeList.length > 0 ? activeList[0] : null);
         }
         
         setMembership(memRes.membership);
@@ -463,64 +659,77 @@ export default function HomePage() {
               </div>
             ) : (
               <div className="flex flex-col gap-3.5">
-                {upcomingAppointments.map((appt) => (
-                  <div key={appt.id} className="rounded-3xl bg-white border border-bloom-100/50 p-4 shadow-bloom-card flex items-start gap-4">
-                    <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-bloom-100/40 border border-bloom-100 flex items-center justify-center">
-                      {appt.users?.avatar_url ? (
-                        <img src={appt.users.avatar_url} alt="" className="h-full w-full object-cover" />
-                      ) : (
-                        <span className="text-xl font-bold text-bloom-600">{appt.users?.full_name?.[0] || 'P'}</span>
-                      )}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <h4 className="text-sm font-bold text-slate-800 truncate">{appt.users?.full_name || 'Patient'}</h4>
-                      <p className="text-[11px] font-semibold text-slate-400 mt-0.5">
-                        {new Date(appt.appointment_date).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })} – {appt.slot_time}
-                      </p>
-                      <div className="flex gap-2 mt-2">
-                        <span className="text-[9px] font-bold uppercase bg-bloom-100 text-bloom-700 px-2.5 py-0.5 rounded-full">
-                          {appt.consultation_type}
-                        </span>
-                        <span className={cn(
-                          "text-[9px] font-bold uppercase px-2.5 py-0.5 rounded-full",
-                          appt.status === 'confirmed' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
-                        )}>
-                          {appt.status}
-                        </span>
+                {upcomingAppointments.map((appt) => {
+                  const state = getCallWindowState(appt);
+                  return (
+                    <div key={appt.id} className="rounded-3xl bg-white border border-bloom-100/50 p-4 shadow-bloom-card flex flex-col gap-3">
+                      <div className="flex items-start gap-4">
+                        <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-bloom-100/40 border border-bloom-100 flex items-center justify-center">
+                          {appt.users?.avatar_url ? (
+                            <img src={appt.users.avatar_url} alt="" className="h-full w-full object-cover" />
+                          ) : (
+                            <span className="text-xl font-bold text-bloom-600">{appt.users?.full_name?.[0] || 'P'}</span>
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <h4 className="text-sm font-bold text-slate-800 truncate">{appt.users?.full_name || 'Patient'}</h4>
+                          <p className="text-[11px] font-semibold text-slate-400 mt-0.5">
+                            {new Date(appt.appointment_date).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })} – {appt.slot_time}
+                          </p>
+                          <div className="flex gap-2 mt-2">
+                            <span className="text-[9px] font-bold uppercase bg-bloom-100 text-bloom-700 px-2.5 py-0.5 rounded-full">
+                              {appt.consultation_type}
+                            </span>
+                            <span className={cn(
+                              "text-[9px] font-bold uppercase px-2.5 py-0.5 rounded-full",
+                              appt.status === 'confirmed' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+                            )}>
+                              {appt.status}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            onClick={() => handleOpenPatientDrawer(appt.patient_id, appt)}
+                            className="px-2.5 py-1.5 rounded-xl border border-bloom-100 text-bloom-600 font-bold text-[10px] hover:bg-bloom-50 bg-white"
+                          >
+                            Case File
+                          </button>
+                          <button
+                            onClick={() => router.push(`/chat/${appt.patient_id}`)}
+                            className="h-8 w-8 rounded-full border border-bloom-200 bg-white flex items-center justify-center text-bloom-600 hover:bg-bloom-50 shadow-sm"
+                            title="Open Patient Chat"
+                          >
+                            <MessageCircle className="h-4 w-4" />
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                    <div className="flex flex-col gap-1.5 shrink-0 self-center">
+
+                      {/* 10-minute warning notice */}
+                      {state.isJoinable && (
+                        <div className="text-[11px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-xl flex items-center gap-1.5 animate-pulse">
+                          <Clock className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                          <span>⚠️ Please join within 10 minutes or this consultation will need to be rescheduled.</span>
+                        </div>
+                      )}
+
+                      {/* Join Video Call Button */}
                       <button
-                        onClick={() => handleOpenPatientDrawer(appt.patient_id, appt)}
-                        className="px-2.5 py-1.5 rounded-xl border border-bloom-100 text-bloom-600 font-bold text-[9px] hover:bg-bloom-50 bg-white"
+                        disabled={!state.isJoinable}
+                        onClick={() => handleJoinCall(appt.id, appt)}
+                        className={cn(
+                          "w-full py-2.5 px-4 rounded-xl font-extrabold text-xs flex items-center justify-center gap-2 shadow-sm transition-all",
+                          state.isJoinable
+                            ? "bg-[#5b21b6] text-white hover:bg-[#4c1d95] cursor-pointer"
+                            : "bg-slate-100 text-slate-400 cursor-not-allowed shadow-none"
+                        )}
                       >
-                        Case File
-                      </button>
-                      <button
-                        onClick={() => router.push(`/chat/${appt.patient_id}`)}
-                        className="h-8 w-8 rounded-full border border-bloom-200 bg-white flex items-center justify-center text-bloom-600 hover:bg-bloom-50 shadow-sm mx-auto"
-                      >
-                        <MessageCircle className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => {
-                          setDoctorVideoRoom({
-                            url: appt.video_room_url || `https://shebloom.daily.co/consult-${appt.id?.substring(0, 8)}`,
-                            patientName: appt.users?.full_name || 'Patient',
-                            patientId: appt.patient_id,
-                            appointmentId: appt.id,
-                            date: appt.appointment_date,
-                            slot: appt.slot_time,
-                          });
-                          setShowDoctorVideoModal(true);
-                        }}
-                        className="h-8 w-8 rounded-full bg-bloom-600 flex items-center justify-center text-white shadow-md hover:bg-bloom-700 mx-auto"
-                      >
-                        <Video className="h-3.5 w-3.5" />
+                        <Video className="h-4 w-4" />
+                        {getCallButtonLabel(appt.appointment_date, appt.slot_time, appt)}
                       </button>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </section>
@@ -807,30 +1016,27 @@ export default function HomePage() {
                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Uploaded Reports & Documents</p>
                       {selectedPatientRecords.length > 0 ? (
                         <div className="space-y-2">
-                          {selectedPatientRecords.map((rec: any) => {
-                            const filename = rec.file_url?.split('/').pop() || 'report.pdf';
-                            const downloadUrl = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api'}/doctor-portal/patients/${selectedPatientId}/documents/${filename}`;
-                            return (
-                              <div key={rec.id} className="p-3 bg-slate-50 border border-slate-100 rounded-2xl flex items-start gap-3">
-                                <FileText className="h-5 w-5 text-bloom-600 shrink-0 mt-0.5" />
-                                <div className="min-w-0 flex-1">
-                                  <p className="text-[11px] font-bold text-slate-700 truncate">{rec.file_name || rec.record_type}</p>
-                                  <p className="text-[9px] text-slate-400 font-semibold">{new Date(rec.record_date).toLocaleDateString('en-GB')}</p>
+                          {selectedPatientRecords.map((rec: any) => (
+                            <div key={rec.id} className="p-3 bg-slate-50 border border-slate-100 rounded-2xl flex items-center justify-between gap-3">
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <FileText className="h-4 w-4 text-bloom-600 shrink-0" />
+                                <div className="min-w-0">
+                                  <p className="text-xs font-bold text-slate-700 truncate">{rec.file_name || rec.record_type}</p>
+                                  <p className="text-[10px] text-slate-400 font-semibold">{new Date(rec.record_date).toLocaleDateString('en-GB')}</p>
                                 </div>
-                                {rec.file_url && (
-                                  <a
-                                    href={downloadUrl}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    download={filename}
-                                    className="h-8 w-8 rounded-xl hover:bg-bloom-100 flex items-center justify-center text-bloom-600 shrink-0 border border-bloom-50 bg-white"
-                                  >
-                                    <ExternalLink className="h-4 w-4" />
-                                  </a>
-                                )}
                               </div>
-                            );
-                          })}
+                              {rec.file_url && (
+                                <button
+                                  type="button"
+                                  onClick={() => openMedicalReport(rec.file_url, rec.file_name)}
+                                  title="View Medical Report"
+                                  className="h-8 w-8 rounded-xl hover:bg-bloom-100 flex items-center justify-center text-bloom-600 shrink-0 border border-bloom-50 bg-white cursor-pointer"
+                                >
+                                  <ExternalLink className="h-4 w-4" />
+                                </button>
+                              )}
+                            </div>
+                          ))}
                         </div>
                       ) : (
                         <p className="text-xs text-slate-400 text-center py-6 bg-slate-50 border border-slate-100 rounded-2xl font-semibold">No medical records uploaded by this patient.</p>
@@ -897,6 +1103,89 @@ export default function HomePage() {
                               placeholder="Additional notes for the patient..."
                               className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-bloom-200 focus:border-bloom-400 resize-none"
                             />
+                          </div>
+
+                          {/* Meal Structure & Alternatives Section */}
+                          <div className="pt-3 border-t border-slate-200 space-y-2">
+                            <label className="text-[10px] font-extrabold text-[#5b21b6] uppercase tracking-wider block">
+                              Meal Structure & Alternatives
+                            </label>
+
+                            {/* Breakfast */}
+                            <div className="p-2.5 bg-white rounded-xl border border-slate-200 space-y-1.5">
+                              <span className="text-[9px] font-bold text-[#9d174d] uppercase">Breakfast</span>
+                              <input
+                                type="text"
+                                value={dietBreakfast}
+                                onChange={e => setDietBreakfast(e.target.value)}
+                                placeholder="Primary Breakfast Option..."
+                                className="w-full h-8 rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-semibold text-slate-800"
+                              />
+                              <input
+                                type="text"
+                                value={dietBreakfastAlt}
+                                onChange={e => setDietBreakfastAlt(e.target.value)}
+                                placeholder="Alternative Breakfast Option..."
+                                className="w-full h-8 rounded-lg border border-emerald-200 bg-emerald-50/50 px-2.5 text-xs font-medium text-emerald-800"
+                              />
+                            </div>
+
+                            {/* Lunch */}
+                            <div className="p-2.5 bg-white rounded-xl border border-slate-200 space-y-1.5">
+                              <span className="text-[9px] font-bold text-[#9d174d] uppercase">Lunch</span>
+                              <input
+                                type="text"
+                                value={dietLunch}
+                                onChange={e => setDietLunch(e.target.value)}
+                                placeholder="Primary Lunch Option..."
+                                className="w-full h-8 rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-semibold text-slate-800"
+                              />
+                              <input
+                                type="text"
+                                value={dietLunchAlt}
+                                onChange={e => setDietLunchAlt(e.target.value)}
+                                placeholder="Alternative Lunch Option..."
+                                className="w-full h-8 rounded-lg border border-emerald-200 bg-emerald-50/50 px-2.5 text-xs font-medium text-emerald-800"
+                              />
+                            </div>
+
+                            {/* Snack */}
+                            <div className="p-2.5 bg-white rounded-xl border border-slate-200 space-y-1.5">
+                              <span className="text-[9px] font-bold text-[#9d174d] uppercase">Snack</span>
+                              <input
+                                type="text"
+                                value={dietSnack}
+                                onChange={e => setDietSnack(e.target.value)}
+                                placeholder="Primary Snack Option..."
+                                className="w-full h-8 rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-semibold text-slate-800"
+                              />
+                              <input
+                                type="text"
+                                value={dietSnackAlt}
+                                onChange={e => setDietSnackAlt(e.target.value)}
+                                placeholder="Alternative Snack Option..."
+                                className="w-full h-8 rounded-lg border border-emerald-200 bg-emerald-50/50 px-2.5 text-xs font-medium text-emerald-800"
+                              />
+                            </div>
+
+                            {/* Dinner */}
+                            <div className="p-2.5 bg-white rounded-xl border border-slate-200 space-y-1.5">
+                              <span className="text-[9px] font-bold text-[#9d174d] uppercase">Dinner</span>
+                              <input
+                                type="text"
+                                value={dietDinner}
+                                onChange={e => setDietDinner(e.target.value)}
+                                placeholder="Primary Dinner Option..."
+                                className="w-full h-8 rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-semibold text-slate-800"
+                              />
+                              <input
+                                type="text"
+                                value={dietDinnerAlt}
+                                onChange={e => setDietDinnerAlt(e.target.value)}
+                                placeholder="Alternative Dinner Option..."
+                                className="w-full h-8 rounded-lg border border-emerald-200 bg-emerald-50/50 px-2.5 text-xs font-medium text-emerald-800"
+                              />
+                            </div>
                           </div>
                           {dietSaveSuccess && (
                             <div className="flex items-center gap-2 text-xs font-semibold text-green-700 bg-green-50 p-2.5 rounded-xl border border-green-100">
@@ -1046,22 +1335,38 @@ export default function HomePage() {
                 </p>
               </div>
             </div>
+            {/* Show 10-minute warning note if call is active/joinable */}
+            {getCallWindowState(upcomingAppointment).isJoinable && (
+              <div className="mt-3 text-[11px] font-semibold text-amber-200 bg-amber-950/40 border border-amber-400/30 px-3 py-1.5 rounded-xl flex items-center gap-1.5 animate-pulse">
+                <Clock className="h-3.5 w-3.5 text-amber-300 shrink-0" />
+                <span>Please join within 10 minutes or this consultation will need to be rescheduled.</span>
+              </div>
+            )}
+
             <div className="mt-4 flex gap-2.5">
-              <button
-                onClick={() => {
-                  setSelectedVideoRoom({
-                    url: upcomingAppointment.video_room_url || `https://shebloom.daily.co/consult-${upcomingAppointment.id?.substring(0, 8)}`,
-                    doctorName: upcomingAppointment.doctors?.users?.full_name || 'Dr. Deepa Madhavan',
-                    date: upcomingAppointment.appointment_date,
-                    slot: upcomingAppointment.slot_time,
-                  });
-                  setShowVideoModal(true);
-                }}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-white text-bloom-700 font-extrabold py-2.5 text-xs shadow-md transition hover:bg-white/90 active:scale-95"
-              >
-                <Video className="h-4 w-4 text-bloom-700" />
-                Join Video Call
-              </button>
+              {getCallWindowState(upcomingAppointment).isPastGrace ? (
+                <button
+                  onClick={() => router.push('/consult')}
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-amber-400 text-slate-950 hover:bg-amber-300 font-extrabold py-2.5 text-xs shadow-md transition active:scale-95 cursor-pointer"
+                >
+                  <Calendar className="h-4 w-4" />
+                  Reschedule Consultation
+                </button>
+              ) : (
+                <button
+                  disabled={!isCallActive(upcomingAppointment.appointment_date, upcomingAppointment.slot_time, upcomingAppointment)}
+                  onClick={() => handleJoinCall(upcomingAppointment.id, upcomingAppointment)}
+                  className={cn(
+                    "flex flex-1 items-center justify-center gap-1.5 rounded-xl font-extrabold py-2.5 text-xs shadow-md transition active:scale-95",
+                    isCallActive(upcomingAppointment.appointment_date, upcomingAppointment.slot_time, upcomingAppointment)
+                      ? "bg-white text-bloom-700 hover:bg-white/90 cursor-pointer"
+                      : "bg-slate-100 text-slate-400 cursor-not-allowed shadow-none opacity-80"
+                  )}
+                >
+                  <Video className="h-4 w-4" />
+                  {getCallButtonLabel(upcomingAppointment.appointment_date, upcomingAppointment.slot_time, upcomingAppointment)}
+                </button>
+              )}
               <button
                 onClick={() => router.push(`/chat/${upcomingAppointment.doctors?.users?.id || upcomingAppointment.doctor_id}`)}
                 className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-white/15 py-2.5 text-xs font-bold text-white backdrop-blur-sm transition hover:bg-white/25"
@@ -1215,6 +1520,7 @@ export default function HomePage() {
           doctorName={selectedVideoRoom.doctorName}
           appointmentDate={selectedVideoRoom.date}
           slotTime={selectedVideoRoom.slot}
+          appointmentId={selectedVideoRoom.appointmentId}
         />
       )}
     </div>

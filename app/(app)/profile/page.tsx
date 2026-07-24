@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/auth-provider';
 import { apiFetch } from '@/lib/api';
+import { openMedicalReport } from '@/lib/reports';
 import {
   ArrowLeft,
   Edit2,
@@ -27,6 +28,9 @@ import {
   Star,
   HeartPulse,
   Clipboard,
+  Upload,
+  Trash2,
+  Paperclip,
 } from 'lucide-react';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
@@ -64,6 +68,104 @@ export default function ProfilePage() {
 
   // File input ref for avatar
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Medical Reports State
+  const [reports, setReports] = useState<any[]>([]);
+  const [loadingReports, setLoadingReports] = useState(true);
+  const [uploadingReport, setUploadingReport] = useState(false);
+  const reportFileInputRef = useRef<HTMLInputElement>(null);
+
+  const fetchReports = async () => {
+    if (profile?.role !== 'patient') return;
+    try {
+      setLoadingReports(true);
+      const res = await apiFetch('/health-records');
+      setReports(res.records || []);
+    } catch (err) {
+      console.error('Error fetching reports', err);
+    } finally {
+      setLoadingReports(false);
+    }
+  };
+
+  useEffect(() => {
+    if (profile?.role === 'patient') {
+      fetchReports();
+    }
+  }, [profile]);
+
+  const handleReportUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingReport(true);
+    try {
+      const { upload_url, file_path } = await apiFetch('/health-records/upload-url', {
+        method: 'POST',
+        body: JSON.stringify({
+          file_name: file.name,
+          content_type: file.type,
+        }),
+      });
+
+      const uploadRes = await fetch(upload_url, {
+        method: 'PUT',
+        body: file,
+        headers: {
+          'Content-Type': file.type,
+        },
+      });
+
+      if (!uploadRes.ok) {
+        throw new Error('Failed to upload file to storage');
+      }
+
+      await apiFetch('/health-records', {
+        method: 'POST',
+        body: JSON.stringify({
+          record_type: 'Report',
+          file_url: file_path,
+          file_name: file.name,
+        }),
+      });
+
+      await fetchReports();
+      alert('Medical report uploaded successfully!');
+    } catch (err: any) {
+      alert(err.message || 'Failed to upload report');
+    } finally {
+      setUploadingReport(false);
+      if (reportFileInputRef.current) reportFileInputRef.current.value = '';
+    }
+  };
+
+  const handleDeleteReport = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this medical report? This cannot be undone.')) return;
+    try {
+      await apiFetch(`/health-records/${id}`, {
+        method: 'DELETE',
+      });
+      await fetchReports();
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete report');
+    }
+  };
+
+  const resolveSecureUrl = (url: string) => {
+    if (!url) return '';
+    const token = localStorage.getItem('token') || '';
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
+    let cleanUrl = url;
+    if (url.startsWith('/api')) {
+      cleanUrl = url.substring(4);
+    }
+    let path = cleanUrl;
+    if (!path.startsWith('/health-records/documents/')) {
+      path = `/health-records/documents/${cleanUrl}`;
+    }
+    const separator = path.includes('?') ? '&' : '?';
+    return `${baseUrl}${path}${separator}token=${token}`;
+  };
 
   // Consultation History
   const [appointments, setAppointments] = useState<any[]>([]);
@@ -519,6 +621,76 @@ export default function ProfilePage() {
           </>
         )}
 
+        {/* Medical Reports Section (Patient only) */}
+        {profile?.role === 'patient' && !isEditing && (
+          <div className="rounded-3xl bg-white p-5 shadow-sm border border-bloom-100 space-y-4 animate-in fade-in">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Medical Reports</p>
+                <p className="text-[9px] text-slate-400 font-semibold mt-0.5">Upload and view clinical documents</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => reportFileInputRef.current?.click()}
+                disabled={uploadingReport}
+                className="px-3 py-1.5 bg-bloom-gradient text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-sm hover:brightness-105 transition-all disabled:opacity-50"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                {uploadingReport ? 'Uploading...' : 'Upload Report'}
+              </button>
+              <input
+                type="file"
+                ref={reportFileInputRef}
+                onChange={handleReportUpload}
+                accept="application/pdf,image/*"
+                className="hidden"
+              />
+            </div>
+
+            {loadingReports ? (
+              <p className="text-xs text-slate-400 font-semibold">Loading documents...</p>
+            ) : reports.length === 0 ? (
+              <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl text-center">
+                <Paperclip className="w-8 h-8 text-slate-300 mx-auto mb-1.5" />
+                <p className="text-xs font-bold text-slate-400">No medical reports uploaded yet.</p>
+                <p className="text-[10px] text-slate-400 font-medium mt-0.5">PDFs or images under 10MB are supported.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-2.5">
+                {reports.map((report) => (
+                  <div key={report.id} className="p-3 bg-slate-50 border border-slate-100 rounded-2xl flex items-center justify-between gap-3 hover:border-bloom-100 transition-colors">
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                      <div className="w-9 h-9 rounded-xl bg-bloom-100/50 flex items-center justify-center text-bloom-700 font-bold shrink-0">
+                        <FileCheck className="w-4.5 h-4.5" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <button
+                          type="button"
+                          onClick={() => openMedicalReport(report.file_url, report.file_name)}
+                          className="font-bold text-xs text-slate-800 hover:text-bloom-600 transition truncate text-left block"
+                        >
+                          {report.file_name || 'Report Document'}
+                        </button>
+                        <p className="text-[9px] text-slate-400 font-semibold mt-0.5">
+                          {report.record_type} · {new Date(report.record_date).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteReport(report.id)}
+                      className="p-2 text-slate-400 hover:text-red-500 rounded-xl hover:bg-red-50 transition shrink-0"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Doctor Analytics */}
         {profile?.role === 'doctor' && (
           <div className="rounded-3xl bg-white p-5 shadow-sm border border-bloom-100 space-y-4">
@@ -852,19 +1024,53 @@ export default function ProfilePage() {
                       <p className="text-xs text-slate-500 mt-0.5">
                         {new Date(appt.appointment_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} · {appt.slot_time}
                       </p>
-                      <div className="flex gap-2 mt-1.5">
+                      <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                         <span className="text-[10px] font-semibold uppercase bg-bloom-100 text-bloom-700 px-2 py-0.5 rounded-full">
                           {appt.consultation_type}
                         </span>
-                        <span className={cn(
-                          "text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full",
-                          appt.status === 'completed' ? 'bg-green-100 text-green-700' :
-                          appt.status === 'confirmed' ? 'bg-blue-100 text-blue-700' :
-                          appt.status === 'cancelled' ? 'bg-red-100 text-red-700' :
-                          'bg-amber-100 text-amber-700'
-                        )}>
-                          {appt.status}
-                        </span>
+                        {(() => {
+                          const statusTag = appt.display_status || appt.status;
+                          return (
+                            <span className={cn(
+                              "text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full",
+                              statusTag === 'completed' ? 'bg-green-100 text-green-700' :
+                              statusTag === 'confirmed' ? 'bg-blue-100 text-blue-700' :
+                              statusTag === 'cancelled' || statusTag === 'missed' ? 'bg-red-100 text-red-700' :
+                              'bg-amber-100 text-amber-700'
+                            )}>
+                              {statusTag}
+                            </span>
+                          );
+                        })()}
+                        {(() => {
+                          const [y, m, d] = (appt.appointment_date || '').split('-').map(Number);
+                          const [h, min] = (appt.slot_time || '').split(':').map(Number);
+                          const scheduledTime = new Date(y, (m || 1) - 1, d || 1, h || 0, min || 0, 0, 0);
+                          const graceEnd = new Date(scheduledTime.getTime() + 10 * 60 * 1000);
+                          const now = new Date();
+                          const isJoinable = now >= scheduledTime && now <= graceEnd && ['confirmed', 'pending', 'rescheduled'].includes(appt.status || appt.display_status);
+                          const isMissed = now > graceEnd || ['missed', 'cancelled'].includes(appt.status || appt.display_status);
+
+                          if (isJoinable) {
+                            return (
+                              <div className="w-full mt-1.5 p-2 bg-amber-50 border border-amber-200 rounded-xl text-[10px] text-amber-800 font-semibold flex items-center gap-1.5">
+                                <Clock className="h-3 w-3 text-amber-600 shrink-0" />
+                                <span>Please join within 10 minutes or this consultation will need to be rescheduled.</span>
+                              </div>
+                            );
+                          }
+                          if (isMissed) {
+                            return (
+                              <button
+                                onClick={() => router.push('/consult')}
+                                className="ml-auto text-[10px] font-bold text-bloom-600 bg-bloom-50 hover:bg-bloom-100 px-2.5 py-1 rounded-lg border border-bloom-200 cursor-pointer"
+                              >
+                                Reschedule
+                              </button>
+                            );
+                          }
+                          return null;
+                        })()}
                       </div>
                     </div>
                   </div>

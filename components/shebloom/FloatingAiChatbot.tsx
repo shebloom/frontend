@@ -148,9 +148,14 @@ export function FloatingAiChatbot() {
 
     try {
       const promptText = userText + (currentName ? ` (User attached image/report: ${currentName})` : '');
+      const historyPayload = messages.slice(-6).map(m => ({
+        role: m.sender_id === '00000000-0000-0000-0000-0000000000a1' ? 'model' : 'user',
+        content: m.content ? m.content.replace(/\[RECOMMEND_BOOKING\]/g, '').trim() : ''
+      }));
+
       const res = await apiFetch('/chat/ai/message', {
         method: 'POST',
-        body: JSON.stringify({ content: promptText }),
+        body: JSON.stringify({ content: promptText, history: historyPayload }),
       });
 
       if (res.aiMessage) {
@@ -172,13 +177,55 @@ export function FloatingAiChatbot() {
     }
   };
 
+  const handleSuggestionClick = async (text: string) => {
+    setSafetyError(null);
+
+    const userMsg: Message = {
+      id: `user-${Date.now()}`,
+      sender_id: 'user',
+      content: text,
+      created_at: new Date().toISOString(),
+    };
+
+    setMessages(prev => [...prev, userMsg]);
+    setLoading(true);
+
+    try {
+      const historyPayload = messages.slice(-6).map(m => ({
+        role: m.sender_id === '00000000-0000-0000-0000-0000000000a1' ? 'model' : 'user',
+        content: m.content ? m.content.replace(/\[RECOMMEND_BOOKING\]/g, '').trim() : ''
+      }));
+
+      const res = await apiFetch('/chat/ai/message', {
+        method: 'POST',
+        body: JSON.stringify({ content: text, history: historyPayload }),
+      });
+
+      if (res.aiMessage) {
+        setMessages(prev => [...prev, res.aiMessage]);
+      } else {
+        throw new Error('No AI response');
+      }
+    } catch (err) {
+      const fallbackAiMsg: Message = {
+        id: `ai-${Date.now()}`,
+        sender_id: '00000000-0000-0000-0000-0000000000a1',
+        content: `Thank you for sharing. For general educational guidance:\n\n• **Cycle & Hormones**: Fluctuation in cycle length or symptoms is often connected to stress, sleep, or nutrition.\n• **General Care**: Stay hydrated, engage in gentle pelvic yoga, and log symptoms.\n\n*Note: This AI response is for general informational purposes only and is not a substitute for a real medical consultation.*`,
+        created_at: new Date().toISOString(),
+      };
+      setMessages(prev => [...prev, fallbackAiMsg]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <>
       {/* FLOATING ICON BUTTON AT BOTTOM-RIGHT CORNER */}
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className="fixed bottom-20 right-4 z-40 h-14 w-14 rounded-full bg-gradient-to-tr from-[#5b21b6] via-[#7c3aed] to-[#9d174d] text-white shadow-[0_8px_25px_rgba(91,33,182,0.4)] flex items-center justify-center transition-all hover:scale-110 active:scale-95 group border-2 border-white"
+          className="fixed bottom-20 right-4 z-30 h-14 w-14 rounded-full bg-gradient-to-tr from-[#5b21b6] via-[#7c3aed] to-[#9d174d] text-white shadow-[0_8px_25px_rgba(91,33,182,0.4)] flex items-center justify-center transition-all hover:scale-110 active:scale-95 group border-2 border-white"
           title="Open 24/7 AI Health Assistant"
         >
           <div className="relative">
@@ -233,17 +280,20 @@ export function FloatingAiChatbot() {
           )}
 
           {/* Messages Body */}
-          <div ref={scrollRef} className="flex-1 p-4 overflow-y-auto space-y-3 bg-slate-50/60 scrollbar-hide text-xs">
+          <div ref={scrollRef} className="flex-1 p-4 overflow-y-auto space-y-3.5 bg-slate-50/60 scrollbar-hide text-xs">
             {messages.map((msg) => {
               const isAi = msg.sender_id === '00000000-0000-0000-0000-0000000000a1';
+              const containsBooking = isAi && msg.content?.includes('[RECOMMEND_BOOKING]');
+              const cleanContent = msg.content ? msg.content.replace(/\[RECOMMEND_BOOKING\]/g, '').trim() : '';
+
               return (
                 <div
                   key={msg.id}
-                  className={cn('flex flex-col', isAi ? 'items-start' : 'items-end')}
+                  className={cn('flex flex-col gap-1.5', isAi ? 'items-start' : 'items-end')}
                 >
                   <div
                     className={cn(
-                      'max-w-[85%] p-3.5 rounded-2xl leading-relaxed shadow-2xs space-y-2',
+                      'max-w-[88%] p-3.5 rounded-2xl leading-relaxed shadow-2xs space-y-2',
                       isAi
                         ? 'bg-white text-slate-800 border border-purple-100 rounded-tl-sm'
                         : 'bg-[#5b21b6] text-white rounded-tr-sm font-medium'
@@ -268,33 +318,65 @@ export function FloatingAiChatbot() {
                       </div>
                     )}
 
-                    {msg.content && <div className="whitespace-pre-line">{msg.content}</div>}
-
-                    {/* Book consultation button below AI message */}
-                    {isAi && (
-                      <div className="pt-2 border-t border-purple-100">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setIsOpen(false);
-                            router.push('/consult');
-                          }}
-                          className="w-full py-1.5 px-2.5 bg-[#5b21b6] hover:bg-[#4c1d95] text-white text-[11px] font-bold rounded-xl flex items-center justify-center gap-1 shadow-2xs"
-                        >
-                          <Stethoscope className="w-3 h-3" />
-                          Book with Dr. Deepa Madhav
-                        </button>
-                      </div>
-                    )}
+                    {cleanContent && <div className="whitespace-pre-line leading-relaxed">{cleanContent}</div>}
                   </div>
+
+                  {/* Booking distinct card for symptoms */}
+                  {containsBooking && (
+                    <div className="mt-1 w-[88%] bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-100/80 rounded-2xl p-3 shadow-3xs space-y-2 animate-in fade-in zoom-in-95 duration-200">
+                      <div className="flex gap-2 items-start">
+                        <div className="h-7 w-7 rounded-lg bg-purple-100 text-[#5b21b6] flex items-center justify-center shrink-0">
+                          <Stethoscope className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <h4 className="text-[10px] font-black text-slate-800">Consultation Recommended</h4>
+                          <p className="text-[9px] text-slate-400 font-semibold leading-normal mt-0.5">
+                            Your symptoms suggest a direct clinical review might be helpful. Consult with Dr. Deepa Madhavan online.
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsOpen(false);
+                          router.push('/consult');
+                        }}
+                        className="w-full py-1.5 bg-gradient-to-r from-[#5b21b6] to-[#9d174d] hover:brightness-105 text-white text-[10px] font-bold rounded-xl flex items-center justify-center gap-1 shadow-xs transition"
+                      >
+                        Book Consultation Room
+                      </button>
+                    </div>
+                  )}
                 </div>
               );
             })}
 
             {loading && (
-              <div className="flex items-center gap-2 text-slate-400 font-semibold text-xs py-2">
-                <div className="w-4 h-4 border-2 border-[#5b21b6] border-t-transparent rounded-full animate-spin" />
-                <span>AI Assistant thinking...</span>
+              <div className="flex items-center gap-1 bg-white border border-purple-100 px-3 py-2 rounded-2xl rounded-tl-sm w-[64px] shadow-2xs justify-center">
+                <span className="h-1.5 w-1.5 bg-[#5b21b6] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                <span className="h-1.5 w-1.5 bg-[#5b21b6] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                <span className="h-1.5 w-1.5 bg-[#5b21b6] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+              </div>
+            )}
+
+            {/* Suggestions Chips */}
+            {!loading && messages.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 pt-2">
+                {[
+                  "Soothe period cramps",
+                  "PCOS diet tips",
+                  "Thyroid support",
+                  "What is seed cycling?"
+                ].map((sug, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => handleSuggestionClick(sug)}
+                    className="px-2.5 py-1.5 bg-white hover:bg-purple-50 text-[#5b21b6] hover:text-[#4c1d95] border border-purple-100 rounded-xl text-[9px] font-extrabold shadow-3xs transition duration-200 active:scale-95"
+                  >
+                    {sug}
+                  </button>
+                ))}
               </div>
             )}
           </div>

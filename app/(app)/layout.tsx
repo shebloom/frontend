@@ -3,7 +3,7 @@
 import { useAuth } from '@/components/auth-provider';
 import { useRouter, usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { BottomNav, BloomLogo, AuthSidebar } from '@/components/shebloom';
+import { BottomNav, BloomLogo, AuthSidebar, RealtimeNotificationProvider } from '@/components/shebloom';
 import { FloatingAiChatbot } from '@/components/shebloom/FloatingAiChatbot';
 
 const loadingMessages = [
@@ -86,24 +86,26 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     !pathname.includes('/video');
 
   return (
-    <div className="fixed inset-0 bg-white overflow-hidden flex items-center justify-center">
-      
-      {/* Desktop Container (Split 50/50 on PC) */}
-      <div className="w-full h-full flex flex-col md:flex-row relative">
+    <RealtimeNotificationProvider>
+      <div className="fixed inset-0 bg-white overflow-hidden flex items-center justify-center">
         
-        {/* Left side: desktop banner (Hidden on mobile) */}
-        <AuthSidebar className="md:w-1/2" />
+        {/* Desktop Container (Split 50/50 on PC) */}
+        <div className="w-full h-full flex flex-col md:flex-row relative">
+          
+          {/* Left side: desktop banner (Hidden on mobile) */}
+          <AuthSidebar className="md:w-1/2" />
 
-        {/* Right side: Mobile view & Desktop split (50%) app view */}
-        <div className={`w-full md:w-1/2 h-full flex flex-col overflow-hidden relative bg-white ${showBottomNav ? 'pb-20' : ''}`}>
-          <main className="flex-1 overflow-y-auto scrollbar-hide">
-            {children}
-          </main>
-          {showBottomNav && <BottomNav className="absolute bottom-0 left-0 right-0 z-50" />}
-          {profile?.role !== 'doctor' && <FloatingAiChatbot />}
+          {/* Right side: Mobile view & Desktop split (50%) app view */}
+          <div className={`w-full md:w-1/2 h-full flex flex-col overflow-hidden relative bg-white ${showBottomNav ? 'pb-20' : ''}`}>
+            <main className="flex-1 overflow-y-auto scrollbar-hide">
+              {children}
+            </main>
+            {showBottomNav && <BottomNav className="absolute bottom-0 left-0 right-0 z-10" />}
+            {profile?.role !== 'doctor' && <FloatingAiChatbot />}
+          </div>
+
         </div>
-
       </div>
-    </div>
+    </RealtimeNotificationProvider>
   );
 }

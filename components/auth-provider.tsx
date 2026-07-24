@@ -80,10 +80,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
+    const syncToken = (s: Session | null) => {
+      if (typeof window !== 'undefined') {
+        if (s?.access_token) {
+          localStorage.setItem('token', s.access_token);
+        } else {
+          localStorage.removeItem('token');
+        }
+      }
+    };
+
     // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
+      syncToken(session);
       if (session?.user) {
         refreshProfile(session.user).finally(() => setIsLoading(false));
       } else {
@@ -97,11 +108,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       setUser(session?.user ?? null);
+      syncToken(session);
       if (session?.user) {
-        refreshProfile(session.user).finally(() => setIsLoading(false));
+        refreshProfile(session.user);
       } else {
         setProfile(null);
-        setIsLoading(false);
       }
     });
 

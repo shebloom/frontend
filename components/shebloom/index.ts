@@ -15,3 +15,5 @@ export type { Stat } from './stat-card';
 export { SectionHeader } from './section-header';
 export { DesktopLeftBanner } from './desktop-left-banner';
 export { AuthSidebar } from './AuthSidebar';
+export { RealtimeNotificationProvider } from './RealtimeNotificationProvider';
+

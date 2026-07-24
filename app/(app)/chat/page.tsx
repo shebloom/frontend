@@ -15,9 +15,10 @@ export default function ChatHubPage() {
     async function load() {
       try {
         setLoading(true);
-        const [docsRes, apptsRes] = await Promise.all([
+        const [docsRes, apptsRes, convosRes] = await Promise.all([
           apiFetch('/doctors'),
           apiFetch('/appointments'),
+          apiFetch('/chat/conversations').catch(() => ({ conversations: [] })),
         ]);
 
         const doctorsList = docsRes.doctors || [];
@@ -26,8 +27,11 @@ export default function ChatHubPage() {
           setDrDeepa(doc);
 
           const appts = apptsRes.appointments || [];
-          const confirmed = appts.some((a: any) => a.doctor_id === doc.id && ['confirmed', 'pending'].includes(a.status));
-          setHasBooking(confirmed);
+          const convos = convosRes.conversations || [];
+          const hasAppt = appts.some((a: any) => a.doctor_id === doc.id || a.doctors?.id === doc.id);
+          const hasConvo = convos.some((c: any) => c.doctor_id === doc.id || c.doctors?.user_id === doc.id || c.doctor_id === doc.user_id);
+
+          setHasBooking(hasAppt || hasConvo || convos.length > 0);
         }
       } catch (err) {
         console.error('Chat hub load error:', err);
@@ -90,11 +94,8 @@ export default function ChatHubPage() {
         {/* THREAD 2: Chat with Dr. Deepa Madhavan */}
         <div 
           onClick={() => {
-            if (drDeepa?.id) {
-              router.push(`/chat/${drDeepa.id}`);
-            } else {
-              router.push('/consult');
-            }
+            const targetId = drDeepa?.id || drDeepa?.user_id || '00000000-0000-0000-0000-0000000000d1';
+            router.push(`/chat/${targetId}`);
           }}
           className="bg-white rounded-[32px] p-6 border border-slate-200/80 shadow-sm relative overflow-hidden cursor-pointer hover:border-[#5b21b6] transition-all group"
         >
@@ -127,18 +128,11 @@ export default function ChatHubPage() {
           </div>
 
           <div className="mt-4 pt-3.5 border-t border-slate-100 flex items-center justify-between text-xs">
-            {hasBooking ? (
-              <span className="text-emerald-600 font-bold flex items-center gap-1">
-                <ShieldCheck className="w-4 h-4" />
-                Active Consultation Thread Unlocked
-              </span>
-            ) : (
-              <span className="text-amber-600 font-semibold flex items-center gap-1">
-                <Info className="w-3.5 h-3.5" />
-                Requires confirmed appointment with Dr. Deepa Madhavan
-              </span>
-            )}
-            <span className="font-bold text-[#5b21b6]">Open Thread →</span>
+            <span className="text-emerald-600 font-bold flex items-center gap-1">
+              <ShieldCheck className="w-4 h-4" />
+              Direct Doctor Chat Thread
+            </span>
+            <span className="font-bold text-[#5b21b6]">Open Chat →</span>
           </div>
         </div>
 

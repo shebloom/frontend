@@ -26,6 +26,7 @@ import { cn } from '@/lib/utils';
 import Link from 'next/link';
 import { useAuth } from '@/components/auth-provider';
 import { apiFetch } from '@/lib/api';
+import { openMedicalReport } from '@/lib/reports';
 
 const tabs = ['Overview', 'Symptoms', 'Reports', 'Prescriptions'] as const;
 type Tab = (typeof tabs)[number];
@@ -552,17 +553,8 @@ export default function HealthPage() {
                     </div>
                     {rec.file_url && (
                       <button
-                        onClick={() => {
-                          if (rec.file_url.startsWith('data:')) {
-                            const w = window.open();
-                            if (w) {
-                              w.document.write('<img src="' + rec.file_url + '" style="max-width:100%"/>');
-                            }
-                          } else {
-                            window.open(rec.file_url, '_blank');
-                          }
-                        }}
-                        className="text-xs font-medium text-bloom-600 flex items-center gap-1"
+                        onClick={() => openMedicalReport(rec.file_url, rec.file_name)}
+                        className="text-xs font-medium text-bloom-600 flex items-center gap-1 cursor-pointer bg-transparent border-0"
                       >
                         <Eye className="h-3.5 w-3.5" /> View
                       </button>

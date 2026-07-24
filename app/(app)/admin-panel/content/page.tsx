@@ -16,6 +16,7 @@ import {
   Video,
 } from 'lucide-react';
 import Link from 'next/link';
+import { uploadVideoToCloudinary } from '@/lib/cloudinary';
 
 export default function AdminContentPage() {
   const { profile, isLoading } = useAuth();
@@ -39,7 +40,16 @@ export default function AdminContentPage() {
     type: 'live',
     category: 'Fertility',
     scheduled_at: '',
+    video_url: '',
   });
+
+  // Video Upload Cloudinary States
+  const [selectedVideoFile, setSelectedVideoFile] = useState<File | null>(null);
+  const [videoPreviewUrl, setVideoPreviewUrl] = useState<string>('');
+  const [isUploadingVideo, setIsUploadingVideo] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadPhase, setUploadPhase] = useState<'preparing' | 'uploading' | 'processing' | 'complete' | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isLoading && profile?.role !== 'admin') {
@@ -118,6 +128,41 @@ export default function AdminContentPage() {
 
   const handleCreateSession = async (e: React.FormEvent) => {
     e.preventDefault();
+    setUploadError(null);
+
+    let finalVideoUrl = newSession.video_url?.trim() || '';
+
+    // If a raw video file was selected, upload it to Cloudinary first
+    if (selectedVideoFile) {
+      try {
+        setIsUploadingVideo(true);
+        setUploadProgress(0);
+
+        finalVideoUrl = await uploadVideoToCloudinary(
+          selectedVideoFile,
+          (percent) => {
+            setUploadProgress(percent);
+          },
+          (phase) => {
+            setUploadPhase(phase);
+          }
+        );
+      } catch (err: any) {
+        setIsUploadingVideo(false);
+        setUploadProgress(0);
+        const errMsg = err?.message || 'Failed to upload video to Cloudinary CDN.';
+        setUploadError(`Video Upload Failed: ${errMsg}`);
+        return; // Abort saving session if Cloudinary upload fails!
+      } finally {
+        setIsUploadingVideo(false);
+      }
+    }
+
+    if (!finalVideoUrl) {
+      setUploadError('Please provide a streamable video URL or select a video file to upload.');
+      return;
+    }
+
     try {
       let formattedDate = null;
       if (newSession.type === 'live' && newSession.scheduled_at) {
@@ -129,6 +174,7 @@ export default function AdminContentPage() {
 
       const payload = {
         ...newSession,
+        video_url: finalVideoUrl,
         scheduled_at: formattedDate,
       };
 
@@ -148,9 +194,15 @@ export default function AdminContentPage() {
         type: 'live',
         category: 'Fertility',
         scheduled_at: '',
+        video_url: '',
       });
+      setSelectedVideoFile(null);
+      setVideoPreviewUrl('');
+      setUploadError(null);
+      setUploadProgress(0);
+      setUploadPhase(null);
     } catch (err: any) {
-      alert(`Failed to create session: ${err?.message || 'Please check form fields'}`);
+      setUploadError(`Failed to create wellness session: ${err?.message || 'Database write error'}`);
     }
   };
 
@@ -475,41 +527,117 @@ export default function AdminContentPage() {
                   </div>
                 </div>
 
-                {/* DEDICATED PROMINENT VIDEO UPLOAD FIELD */}
-                <div className="p-3.5 bg-purple-50 rounded-2xl border border-purple-200 text-center space-y-2">
-                  <label className="block text-[10px] font-extrabold text-[#5b21b6] uppercase tracking-wider">
-                    Upload Prerecorded Session Video (.mp4 / .mov)
-                  </label>
-                  <input
-                    type="file"
-                    id="sessionVideoFile"
-                    accept="video/*"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) {
-                        const objectUrl = URL.createObjectURL(file);
-                        setNewSession({ ...newSession, video_url: objectUrl } as any);
-                      }
-                    }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => document.getElementById('sessionVideoFile')?.click()}
-                    className="w-full py-2.5 px-3 bg-white text-[#5b21b6] border border-purple-200 text-xs font-bold rounded-xl flex items-center justify-center gap-2 hover:bg-purple-100 transition-colors"
-                  >
-                    <Video className="w-4 h-4 text-[#5b21b6]" />
-                    <span>{(newSession as any).video_url ? '✓ Video Uploaded! Click to Change' : '📁 Select Prerecorded Video File'}</span>
-                  </button>
+                {/* Error Banner */}
+                {uploadError && (
+                  <div className="p-3 bg-red-50 text-red-700 text-xs font-bold rounded-xl border border-red-200 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <XCircle className="w-4 h-4 text-red-600 shrink-0" />
+                      <span>{uploadError}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setUploadError(null)}
+                      className="text-red-500 hover:text-red-800 text-[10px] font-extrabold uppercase"
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                )}
 
-                  {(newSession as any).video_url && (
+                {/* PROMINENT VIDEO SOURCE SECTION (Direct URL or Raw File Upload) */}
+                <div className="p-4 bg-purple-50/70 rounded-2xl border border-purple-200 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-extrabold text-[#5b21b6] uppercase tracking-wider block">
+                      Wellness Session Video Source
+                    </label>
+                    <span className="text-[10px] font-semibold text-purple-600">
+                      Cloudinary CDN Streamable URL
+                    </span>
+                  </div>
+
+                  {/* Option A: Paste Direct Hosted Video URL */}
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-500 mb-1 block">Option A: Paste Existing Hosted Video URL</span>
+                    <input
+                      type="url"
+                      placeholder="e.g. https://res.cloudinary.com/shebloom/video/upload/... or YouTube/Vimeo link"
+                      value={newSession.video_url}
+                      onChange={(e) => {
+                        setNewSession({ ...newSession, video_url: e.target.value });
+                        if (e.target.value) {
+                          setSelectedVideoFile(null);
+                          setVideoPreviewUrl(e.target.value);
+                        }
+                      }}
+                      className="w-full h-10 px-3 rounded-xl border border-slate-200 text-xs font-mono focus:ring-2 focus:ring-purple-300 outline-none bg-white"
+                    />
+                  </div>
+
+                  <div className="text-center text-[10px] font-extrabold text-purple-400 uppercase tracking-widest">— OR —</div>
+
+                  {/* Option B: Raw File Upload (Cloudinary API) */}
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-500 mb-1 block">Option B: Upload Prerecorded Video File (.mp4 / .mov)</span>
+                    <input
+                      type="file"
+                      id="sessionVideoFile"
+                      accept="video/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          setSelectedVideoFile(file);
+                          const objectUrl = URL.createObjectURL(file);
+                          setVideoPreviewUrl(objectUrl);
+                          setUploadError(null);
+                        }
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => document.getElementById('sessionVideoFile')?.click()}
+                      className="w-full py-2.5 px-3 bg-white text-[#5b21b6] border border-purple-200 text-xs font-bold rounded-xl flex items-center justify-center gap-2 hover:bg-purple-100 transition-colors shadow-2xs"
+                    >
+                      <Video className="w-4 h-4 text-[#5b21b6]" />
+                      <span>{selectedVideoFile ? `✓ Selected: ${selectedVideoFile.name} (Click to Change)` : '📁 Choose Raw Video File to Upload to Cloudinary'}</span>
+                    </button>
+                  </div>
+
+                  {/* Upload Progress Bar */}
+                  {isUploadingVideo && (
+                    <div className="p-3 bg-purple-100/80 rounded-xl border border-purple-200 space-y-1.5">
+                      <div className="flex justify-between text-[11px] font-bold text-[#5b21b6]">
+                        <span>
+                          {uploadPhase === 'preparing' && '⏳ Preparing video...'}
+                          {uploadPhase === 'uploading' && `📤 Uploading to CDN...`}
+                          {uploadPhase === 'processing' && '⚙️ Processing on server...'}
+                          {uploadPhase === 'complete' && '✅ Upload complete!'}
+                          {!uploadPhase && 'Uploading video...'}
+                        </span>
+                        <span>{uploadProgress}%</span>
+                      </div>
+                      <div className="w-full bg-purple-200 h-2 rounded-full overflow-hidden">
+                        <div
+                          className="bg-[#5b21b6] h-full transition-all duration-300 rounded-full"
+                          style={{ width: `${uploadProgress}%` }}
+                        />
+                      </div>
+                      <p className="text-[9px] text-purple-600 font-semibold">
+                        {uploadPhase === 'uploading' && 'Large files upload in chunks — UI stays responsive'}
+                        {uploadPhase === 'processing' && 'Assembling chunks and saving to storage...'}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Video Confirmation Preview */}
+                  {videoPreviewUrl && (
                     <div className="pt-2 text-left">
                       <span className="text-[10px] font-extrabold text-[#5b21b6] uppercase tracking-wider block mb-1">
                         ▶ Video Confirmation Preview:
                       </span>
                       <video
                         controls
-                        src={(newSession as any).video_url}
+                        src={videoPreviewUrl}
                         className="w-full h-36 object-cover rounded-xl border border-purple-300 bg-black"
                       />
                     </div>
@@ -517,8 +645,31 @@ export default function AdminContentPage() {
                 </div>
 
                 <div className="flex justify-end gap-2 pt-2">
-                  <button type="button" onClick={() => setShowSessionForm(false)} className="px-4 py-2 rounded-xl text-slate-500 font-bold text-xs hover:bg-slate-50">Cancel</button>
-                  <button type="submit" className="px-4 py-2 rounded-xl bg-bloom-600 text-white font-bold text-xs hover:bg-bloom-700">Save Session</button>
+                  <button
+                    type="button"
+                    disabled={isUploadingVideo}
+                    onClick={() => {
+                      setShowSessionForm(false);
+                      setUploadError(null);
+                    }}
+                    className="px-4 py-2 rounded-xl text-slate-500 font-bold text-xs hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isUploadingVideo}
+                    className="px-5 py-2.5 rounded-xl bg-bloom-600 text-white font-bold text-xs hover:bg-bloom-700 disabled:opacity-60 flex items-center gap-2"
+                  >
+                    {isUploadingVideo ? (
+                      <>
+                        <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        <span>Uploading & Saving...</span>
+                      </>
+                    ) : (
+                      <span>Save Wellness Session</span>
+                    )}
+                  </button>
                 </div>
               </form>
             )}
