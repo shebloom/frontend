@@ -93,7 +93,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               {children}
             </main>
             {showBottomNav && <BottomNav className="absolute bottom-0 left-0 right-0 z-10" />}
-            {profile?.role !== 'doctor' && !pathname.startsWith('/chat') && <FloatingAiChatbot />}
+            {profile?.role !== 'doctor' && pathname === '/home' && <FloatingAiChatbot />}
           </div>
 
         </div>
