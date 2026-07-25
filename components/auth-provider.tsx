@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, setCachedToken } from '@/lib/api';
 
 interface UserProfile {
   id: string;
@@ -33,17 +33,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+
+  useEffect(() => {
+    // Restore cached profile from localStorage on client mount after hydration
+    if (typeof window !== 'undefined') {
+      const cached = localStorage.getItem('shebloom_cached_profile');
+      if (cached) {
+        try {
+          setProfile(JSON.parse(cached));
+          setIsLoading(false);
+        } catch (e) {}
+      }
+    }
+  }, []);
+
+  const saveProfileCache = (p: UserProfile | null) => {
+    setProfile(p);
+    if (typeof window !== 'undefined') {
+      if (p) {
+        localStorage.setItem('shebloom_cached_profile', JSON.stringify(p));
+      } else {
+        localStorage.removeItem('shebloom_cached_profile');
+      }
+    }
+  };
 
   const refreshProfile = async (u?: User) => {
     const currentUser = u || user;
     if (!currentUser) return;
     try {
       const data = await apiFetch('/auth/me');
-      setProfile(data.user);
+      saveProfileCache(data.user);
     } catch (err: any) {
-      // If profile doesn't exist in our DB yet
-      // If profile doesn't exist in our DB yet, auto-sync/provision it
       if (err.message === 'User not found' || err.status === 404 || String(err).includes('404')) {
         try {
           const syncData = await apiFetch('/auth/sync-profile', {
@@ -52,23 +74,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               full_name: currentUser.user_metadata?.full_name || null 
             }),
           });
-          setProfile(syncData.user);
+          saveProfileCache(syncData.user);
           
-          // Redirect patients to onboarding if they haven't set their profile yet
           if (typeof window !== 'undefined' && window.location.pathname === '/login') {
             window.location.href = '/onboarding';
           }
         } catch (syncErr) {
           console.error('Failed to auto-sync profile', syncErr);
-          // Only sign out as a last resort fallback
           try {
             await supabase.auth.signOut();
           } catch (signOutErr) {
             console.error('Sign out error:', signOutErr);
           }
-          setProfile(null);
+          saveProfileCache(null);
           setUser(null);
           setSession(null);
+          setCachedToken(null);
           if (typeof window !== 'undefined') {
             window.location.href = '/login?error=sync_failed';
           }
@@ -81,13 +102,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const syncToken = (s: Session | null) => {
-      if (typeof window !== 'undefined') {
-        if (s?.access_token) {
-          localStorage.setItem('token', s.access_token);
-        } else {
-          localStorage.removeItem('token');
-        }
-      }
+      setCachedToken(s?.access_token || null);
     };
 
     // Get initial session
@@ -98,6 +113,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (session?.user) {
         refreshProfile(session.user).finally(() => setIsLoading(false));
       } else {
+        saveProfileCache(null);
         setIsLoading(false);
       }
     });
@@ -112,7 +128,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (session?.user) {
         refreshProfile(session.user);
       } else {
-        setProfile(null);
+        saveProfileCache(null);
       }
     });
 
@@ -120,6 +136,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signOut = async () => {
+    saveProfileCache(null);
+    setCachedToken(null);
     await supabase.auth.signOut();
   };
 

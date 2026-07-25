@@ -22,21 +22,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
 
-  useEffect(() => {
-    if (!isLoading) {
-      const isSignupFlow = 
-        typeof window !== 'undefined' && 
-        (window.location.pathname === '/onboarding' || window.location.pathname === '/signup');
-        
-      if (!profile && !isSignupFlow) {
-        router.replace('/login');
-      }
-    }
-  }, [isLoading, profile, router]);
+  const isSignupFlow = pathname === '/onboarding' || pathname === '/signup';
 
-  const isSignupFlow = 
-    typeof window !== 'undefined' && 
-    (window.location.pathname === '/onboarding' || window.location.pathname === '/signup');
+  useEffect(() => {
+    if (!isLoading && !profile && !isSignupFlow) {
+      router.replace('/login');
+    }
+  }, [isLoading, profile, router, isSignupFlow]);
 
   const [msgIdx, setMsgIdx] = useState(0);
 

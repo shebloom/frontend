@@ -122,15 +122,38 @@ export default function CommunityPage() {
         method: 'POST',
         body: JSON.stringify({ content: newComment })
       });
-      setComments([...comments, res.comment]);
+
+      if (!res.comment) {
+        alert('Comment was not saved. Please try again.');
+        return;
+      }
+
+      // Re-fetch full comment list and post state from server to reconcile with DB
+      try {
+        const refreshed = await apiFetch(`/community/posts/${selectedPost.id}`);
+        const serverComments = refreshed.comments || [];
+        setComments(serverComments);
+
+        // Reconcile post comment count in local posts array
+        setPosts(posts.map(p => {
+          if (p.id === selectedPost.id) {
+            return { ...p, comments: serverComments.length };
+          }
+          return p;
+        }));
+      } catch (refreshErr) {
+        setComments([...comments, res.comment]);
+        setPosts(posts.map(p => {
+          if (p.id === selectedPost.id) {
+            return { ...p, comments: (p.comments || 0) + 1 };
+          }
+          return p;
+        }));
+      }
+
       setNewComment('');
-      setPosts(posts.map(p => {
-        if (p.id === selectedPost.id) {
-          return { ...p, comments: (p.comments || 0) + 1 };
-        }
-        return p;
-      }));
     } catch (err) {
+      console.error('[community] Comment post failed:', err);
       alert('Failed to post comment');
     } finally {
       setSubmittingComment(false);
@@ -149,13 +172,25 @@ export default function CommunityPage() {
           body: JSON.stringify({ content: replyContent })
         }
       );
-      // Append reply to the correct comment
-      setComments(comments.map(c => {
-        if (c.id === commentId) {
-          return { ...c, replies: [...(c.replies || []), res.reply] };
-        }
-        return c;
-      }));
+
+      if (!res.reply) {
+        alert('Reply was not saved. Please try again.');
+        return;
+      }
+
+      // Re-fetch full comment list from server to reconcile state with DB
+      try {
+        const refreshed = await apiFetch(`/community/posts/${selectedPost.id}`);
+        setComments(refreshed.comments || []);
+      } catch (refreshErr) {
+        setComments(comments.map(c => {
+          if (c.id === commentId) {
+            return { ...c, replies: [...(c.replies || []), res.reply] };
+          }
+          return c;
+        }));
+      }
+
       setReplyContent('');
       setReplyingTo(null);
       // Increment post comment count
@@ -166,6 +201,7 @@ export default function CommunityPage() {
         return p;
       }));
     } catch (err) {
+      console.error('[community] Reply post failed:', err);
       alert('Failed to post reply');
     } finally {
       setSubmittingReply(false);

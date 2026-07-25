@@ -66,7 +66,6 @@ export function RealtimeNotificationProvider({ children }: { children: React.Rea
         const parsed: CallAlert = JSON.parse(saved);
         // STRICT validation: only restore if explicitly for this user
         if (parsed && parsed.expiresAt > Date.now() && parsed.recipientId === profile.id) {
-          console.log(`[Notification] Restored pending call alert for appointment ${parsed.appointmentId}`);
           setIncomingCall(parsed);
         } else {
           sessionStorage.removeItem('shebloom_pending_call_alert');
@@ -121,8 +120,6 @@ export function RealtimeNotificationProvider({ children }: { children: React.Rea
         const res = await apiFetch('/appointments');
         const appointments: any[] = res.appointments || [];
 
-        console.log(`[Notification] Subscribing to ${appointments.length} appointment-specific room(s) for user ${profile.id}`);
-
         for (const appt of appointments) {
           const roomName = `appointment-room-${appt.id}`;
 
@@ -136,7 +133,6 @@ export function RealtimeNotificationProvider({ children }: { children: React.Rea
 
               // STRICT recipient check: payload.recipientId MUST exactly match current user's ID
               if (payload.recipientId !== profile.id) {
-                console.warn(`[Notification] Received incoming_call on ${roomName} but recipientId (${payload.recipientId}) !== our ID (${profile.id}). Ignoring.`);
                 return;
               }
 
@@ -145,11 +141,8 @@ export function RealtimeNotificationProvider({ children }: { children: React.Rea
 
               // Don't show if already in a call
               if (activeCallRoom !== null || (typeof window !== 'undefined' && (window as any).shebloom_is_in_call)) {
-                console.log(`[Notification] Already in call, suppressing incoming_call for appointment ${appt.id}`);
                 return;
               }
-
-              console.log(`[Notification] ✅ incoming_call received on ${roomName} from ${payload.callerName}`);
 
               const callData: CallAlert = {
                 appointmentId: payload.appointmentId,
@@ -183,7 +176,6 @@ export function RealtimeNotificationProvider({ children }: { children: React.Rea
 
               // STRICT recipient check
               if (payload.recipientId !== profile.id) {
-                console.warn(`[Notification] Received patient_is_waiting on ${roomName} but recipientId (${payload.recipientId}) !== our ID (${profile.id}). Ignoring.`);
                 return;
               }
 
@@ -192,8 +184,6 @@ export function RealtimeNotificationProvider({ children }: { children: React.Rea
               if (activeCallRoom !== null || (typeof window !== 'undefined' && (window as any).shebloom_is_in_call)) {
                 return;
               }
-
-              console.log(`[Notification] ✅ patient_is_waiting received on ${roomName} from ${payload.callerName}`);
 
               const callData: CallAlert = {
                 appointmentId: payload.appointmentId,
@@ -221,9 +211,7 @@ export function RealtimeNotificationProvider({ children }: { children: React.Rea
                 });
               }
             })
-            .subscribe((status) => {
-              console.log(`[Notification] Channel ${roomName} status: ${status}`);
-            });
+            .subscribe();
 
           roomChannelsRef.current.push(ch);
         }
@@ -303,11 +291,9 @@ export function RealtimeNotificationProvider({ children }: { children: React.Rea
     });
     setIncomingCall(null);
     sessionStorage.removeItem('shebloom_pending_call_alert');
-    console.log(`[Notification] Call accepted for appointment ${incomingCall.appointmentId}`);
   };
 
   const handleDeclineCall = () => {
-    console.log(`[Notification] Call declined for appointment ${incomingCall?.appointmentId}`);
     setIncomingCall(null);
     sessionStorage.removeItem('shebloom_pending_call_alert');
   };

@@ -1,10 +1,24 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { useAuth } from '@/components/auth-provider';
 import { AuthSidebar } from '@/components/shebloom';
 
 export default function LandingPage() {
   const router = useRouter();
+  const { user } = useAuth();
+
+  const targetHref = user ? '/home' : '/login';
+
+  const handleStartWellness = (e?: React.MouseEvent) => {
+    if (e) e.preventDefault();
+    try {
+      router.push(targetHref);
+    } catch {
+      window.location.href = targetHref;
+    }
+  };
 
   return (
     <div className="fixed inset-0 bg-[#E5D5F0] overflow-hidden flex items-center justify-center p-0 sm:p-4 lg:p-10">
@@ -73,15 +87,16 @@ export default function LandingPage() {
             />
           </div>
 
-          {/* Bottom Action Button Section & Footer (Directly attached to doctor image) */}
+          {/* Bottom Action Button Section & Footer */}
           <div className="w-full px-1 sm:px-2 pb-1 pt-0 mt-0 relative z-20 shrink-0">
-            <button 
-              onClick={() => router.push('/login')}
-              className="w-full h-14 sm:h-16 lg:h-13 bg-[#5b21b6] hover:bg-[#4c1d95] text-white font-extrabold rounded-full text-[16px] sm:text-[17px] lg:text-[15px] shadow-[0_8px_20px_-6px_rgba(91,33,182,0.4)] flex items-center justify-center transition-all active:scale-[0.97]"
+            <Link
+              href={targetHref}
+              onClick={handleStartWellness}
+              className="w-full h-14 sm:h-16 lg:h-13 bg-[#5b21b6] hover:bg-[#4c1d95] text-white font-extrabold rounded-full text-[16px] sm:text-[17px] lg:text-[15px] shadow-[0_8px_20px_-6px_rgba(91,33,182,0.4)] flex items-center justify-center transition-all active:scale-[0.97] cursor-pointer"
               aria-label="Start Your Wellness"
             >
               Start Your Wellness
-            </button>
+            </Link>
             <p className="text-center text-[10.5px] sm:text-[11px] text-slate-400 font-bold tracking-wide mt-3 sm:mt-4 block">
               Secure. Private. For You.
             </p>

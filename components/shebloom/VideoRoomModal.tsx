@@ -91,7 +91,6 @@ export function VideoRoomModal({
     // Wait until localStream is available before setting up WebRTC
     // This prevents the race condition where tracks are added before the stream is ready
     if (!localStream) {
-      console.log('[WebRTC] Waiting for localStream before initializing peer connection...');
       return;
     }
 
@@ -117,19 +116,15 @@ export function VideoRoomModal({
       });
       pcRef.current = pc;
 
-      console.log(`[WebRTC] PeerConnection created for appointment ${appointmentId}`);
-
       // ── Add all local tracks BEFORE creating any offer/answer ──────────────
       localStream.getTracks().forEach((track) => {
         pc?.addTrack(track, localStream);
-        console.log(`[WebRTC] Added local track: ${track.kind} (${track.label})`);
       });
 
       // ── Remote track received ──────────────────────────────────────────────
       pc.ontrack = (event) => {
         if (event.streams && event.streams[0]) {
           const stream = event.streams[0];
-          console.log(`[WebRTC] Remote track received: ${event.track.kind}`);
           setRemoteStream(stream);
           setHasRemoteVideo(true);
           if (remoteVideoRef.current) {
@@ -141,34 +136,25 @@ export function VideoRoomModal({
       // ── ICE candidate generated → broadcast to peer ────────────────────────
       pc.onicecandidate = (event) => {
         if (event.candidate) {
-          console.log(`[WebRTC] ICE candidate generated: ${event.candidate.type} ${event.candidate.protocol}`);
           signalingChannel.send({
             type: 'broadcast',
             event: 'webrtc-ice',
             payload: { candidate: event.candidate, senderId: profile?.id },
           });
-        } else {
-          console.log('[WebRTC] ICE gathering complete.');
         }
       };
 
-      pc.onicegatheringstatechange = () => {
-        console.log(`[WebRTC] ICE gathering state: ${pc?.iceGatheringState}`);
-      };
+      pc.onicegatheringstatechange = () => {};
 
       // ── ICE connection state — handle reconnection ─────────────────────────
       pc.oniceconnectionstatechange = () => {
         const state = pc?.iceConnectionState;
-        console.log(`[WebRTC] ICE connection state changed: ${state}`);
 
         if (state === 'connected' || state === 'completed') {
           if (reconnectTimeout) clearTimeout(reconnectTimeout);
-          console.log('[WebRTC] ✅ ICE connected — call is active.');
         } else if (state === 'disconnected') {
-          console.warn('[WebRTC] ⚠️ ICE disconnected — attempting reconnection in 3s...');
           reconnectTimeout = setTimeout(async () => {
             if (!pcRef.current || pcRef.current.iceConnectionState !== 'disconnected') return;
-            console.log('[WebRTC] Initiating reconnection — creating new offer...');
             try {
               const offer = await pcRef.current.createOffer({ iceRestart: true });
               await pcRef.current.setLocalDescription(offer);
@@ -182,20 +168,13 @@ export function VideoRoomModal({
             }
           }, 3000);
         } else if (state === 'failed') {
-          console.error('[WebRTC] ❌ ICE failed — connection lost.');
           if (reconnectTimeout) clearTimeout(reconnectTimeout);
-        } else if (state === 'closed') {
-          console.log('[WebRTC] Connection closed.');
         }
       };
 
-      pc.onsignalingstatechange = () => {
-        console.log(`[WebRTC] Signaling state: ${pc?.signalingState}`);
-      };
+      pc.onsignalingstatechange = () => {};
 
-      pc.onconnectionstatechange = () => {
-        console.log(`[WebRTC] Connection state: ${pc?.connectionState}`);
-      };
+      pc.onconnectionstatechange = () => {};
     };
 
     signalingChannel
@@ -211,12 +190,10 @@ export function VideoRoomModal({
       })
       .on('broadcast', { event: 'webrtc-join' }, async ({ payload }) => {
         if (payload?.senderId === profile?.id) return;
-        console.log(`[WebRTC] Remote peer joined (${payload?.senderRole}). Creating offer...`);
         if (pcRef.current && (profile?.role === 'doctor' || payload?.senderRole === 'patient')) {
           try {
             const offer = await pcRef.current.createOffer();
             await pcRef.current.setLocalDescription(offer);
-            console.log('[WebRTC] Offer created and set as local description.');
             signalingChannel.send({
               type: 'broadcast',
               event: 'webrtc-offer',
@@ -229,12 +206,10 @@ export function VideoRoomModal({
       })
       .on('broadcast', { event: 'webrtc-offer' }, async ({ payload }) => {
         if (payload?.senderId === profile?.id || !pcRef.current) return;
-        console.log('[WebRTC] Received offer. Creating answer...');
         try {
           await pcRef.current.setRemoteDescription(new RTCSessionDescription(payload.offer));
           const answer = await pcRef.current.createAnswer();
           await pcRef.current.setLocalDescription(answer);
-          console.log('[WebRTC] Answer created and sent.');
           signalingChannel.send({
             type: 'broadcast',
             event: 'webrtc-answer',
@@ -246,10 +221,8 @@ export function VideoRoomModal({
       })
       .on('broadcast', { event: 'webrtc-answer' }, async ({ payload }) => {
         if (payload?.senderId === profile?.id || !pcRef.current) return;
-        console.log('[WebRTC] Received answer. Setting remote description...');
         try {
           await pcRef.current.setRemoteDescription(new RTCSessionDescription(payload.answer));
-          console.log('[WebRTC] Remote description set from answer.');
         } catch (e) {
           console.error('[WebRTC] setRemoteDescription (answer) error:', e);
         }
@@ -258,14 +231,11 @@ export function VideoRoomModal({
         if (payload?.senderId === profile?.id || !pcRef.current) return;
         try {
           await pcRef.current.addIceCandidate(new RTCIceCandidate(payload.candidate));
-          console.log(`[WebRTC] ICE candidate added from peer.`);
         } catch (e) {
           // Benign: can happen if remote description not set yet
-          console.warn('[WebRTC] addIceCandidate error (may be benign):', e);
         }
       })
       .subscribe((status) => {
-        console.log(`[WebRTC] Signaling channel status: ${status}`);
         if (status === 'SUBSCRIBED') {
           initPeerConnection();
           const isDoc = profile?.role === 'doctor';
@@ -281,7 +251,6 @@ export function VideoRoomModal({
             event: 'webrtc-join',
             payload: { senderId: profile?.id, senderRole: profile?.role },
           });
-          console.log(`[WebRTC] Sent webrtc-join as ${profile?.role}`);
         }
       });
 
@@ -292,7 +261,6 @@ export function VideoRoomModal({
         pcRef.current = null;
       }
       supabase.removeChannel(signalingChannel);
-      console.log(`[WebRTC] Cleaned up peer connection and signaling channel for appointment ${appointmentId}`);
     };
   }, [isOpen, appointmentId, localStream, profile, micOn, cameraOn]);
 

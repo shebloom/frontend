@@ -93,7 +93,6 @@ export async function uploadVideoToCloudinary(
 
   for (const preset of presets) {
     try {
-      console.log(`[VideoUpload] Trying Cloudinary preset: ${preset}`);
       onPhase?.('uploading');
 
       const formData = new FormData();
@@ -140,7 +139,6 @@ export async function uploadVideoToCloudinary(
       await new Promise((r) => setTimeout(r, 400));
       onProgress?.(100);
       onPhase?.('complete');
-      console.log(`[VideoUpload] Cloudinary upload complete via preset "${preset}"`);
       return url;
     } catch (err: any) {
       cloudinaryError = err?.message || 'Cloudinary upload error';
@@ -149,15 +147,12 @@ export async function uploadVideoToCloudinary(
   }
 
   // ─── Strategy 2: Backend chunked upload (server-side Supabase Storage) ───────
-  console.log(`[VideoUpload] Falling back to backend chunked upload for "${file.name}" (${(file.size / 1024 / 1024).toFixed(1)} MB)`);
   onPhase?.('uploading');
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') || '' : '';
   const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
   const uploadId = `upload-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
-
-  console.log(`[VideoUpload] Starting chunked upload: ${uploadId} | ${totalChunks} chunks | file=${file.name}`);
 
   const fileArrayBuffer = await file.arrayBuffer();
 
@@ -172,11 +167,9 @@ export async function uploadVideoToCloudinary(
     // Progress: 0–85% during chunk uploads (leave 15% for finalize)
     const chunkProgress = Math.round(((i + 1) / totalChunks) * 85);
     onProgress?.(chunkProgress);
-    console.log(`[VideoUpload] Chunk ${i + 1}/${totalChunks} uploaded (${chunkProgress}%)`);
   }
 
   // Finalize: assemble all chunks on the server and upload to storage
-  console.log(`[VideoUpload] All chunks sent. Finalizing upload ${uploadId}...`);
   onPhase?.('processing');
   onProgress?.(90);
 
@@ -201,6 +194,5 @@ export async function uploadVideoToCloudinary(
 
   onProgress?.(100);
   onPhase?.('complete');
-  console.log(`[VideoUpload] Chunked upload complete: ${finalizeData.video_url}`);
   return finalizeData.video_url;
 }

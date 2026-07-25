@@ -75,6 +75,50 @@ export default function HomePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [greeting, setGreeting] = useState('Welcome');
 
+  const [chatDoctorHref, setChatDoctorHref] = useState('/consult');
+  const [navigatingChat, setNavigatingChat] = useState(false);
+
+  const handleChatWithDoctorClick = async (e?: React.MouseEvent) => {
+    if (e) e.preventDefault();
+    if (navigatingChat) return;
+
+    // If chatDoctorHref is already resolved to a /chat/... thread, navigate immediately
+    if (chatDoctorHref && chatDoctorHref.startsWith('/chat/')) {
+      router.push(chatDoctorHref);
+      return;
+    }
+
+    setNavigatingChat(true);
+    try {
+      const allApptsRes = await apiFetch('/appointments');
+      const allAppts = allApptsRes.appointments || [];
+
+      if (allAppts.length > 0) {
+        const drRes = await apiFetch('/doctors');
+        const doctor = drRes.doctors?.[0];
+        if (doctor?.id) {
+          const convoRes = await apiFetch('/chat/conversations', {
+            method: 'POST',
+            body: JSON.stringify({ doctor_id: doctor.id }),
+          });
+          if (convoRes.conversation?.id) {
+            const threadHref = `/chat/${convoRes.conversation.id}`;
+            setChatDoctorHref(threadHref);
+            router.push(threadHref);
+            return;
+          }
+        }
+      }
+      setChatDoctorHref('/consult');
+      router.push('/consult');
+    } catch (err) {
+      console.error('[chat-routing] Error handling chat click:', err);
+      router.push('/consult');
+    } finally {
+      setNavigatingChat(false);
+    }
+  };
+
   // Video Room Modal State
   const [showVideoModal, setShowVideoModal] = useState(false);
   const [selectedVideoRoom, setSelectedVideoRoom] = useState<any>(null);
@@ -133,7 +177,7 @@ export default function HomePage() {
     const [y, m, d] = (appointment.appointment_date || '').split('-').map(Number);
     const [h, min] = (appointment.slot_time || '').split(':').map(Number);
     const scheduledTime = new Date(y, (m || 1) - 1, d || 1, h || 0, min || 0, 0, 0);
-    const graceEnd = new Date(scheduledTime.getTime() + 10 * 60 * 1000);
+    const graceEnd = new Date(scheduledTime.getTime() + 30 * 60 * 1000); // Full 30-minute booking window
     const now = new Date();
 
     const isTooEarly = now < scheduledTime;
@@ -192,8 +236,6 @@ export default function HomePage() {
           ? (res.patientId || appointment?.patient_id)
           : (res.doctorUserId || appointment?.doctor_id);
 
-        console.log(`[Call] ${profile?.role} joining appointment ${apptId}. Notifying recipientId: ${recipientUserId}`);
-
         // Broadcast to ISOLATED appointment-specific channel (not global)
         // This prevents ANY other user from receiving this notification
         try {
@@ -210,7 +252,6 @@ export default function HomePage() {
 
           if (isDoctor) {
             // Doctor joins → patient should be notified with "Doctor has joined"
-            console.log(`[Call] Doctor broadcasting incoming_call to patient ${recipientUserId} on appointment-room-${apptId}`);
             roomChannel.send({
               type: 'broadcast',
               event: 'incoming_call',
@@ -230,7 +271,6 @@ export default function HomePage() {
             });
           } else {
             // Patient joins → doctor should be notified with "Patient is waiting"
-            console.log(`[Call] Patient broadcasting patient_is_waiting to doctor ${recipientUserId} on appointment-room-${apptId}`);
             roomChannel.send({
               type: 'broadcast',
               event: 'patient_is_waiting',
@@ -487,6 +527,43 @@ export default function HomePage() {
 
           setUpcomingAppointments(activeList);
           setUpcomingAppointment(activeList.length > 0 ? activeList[0] : null);
+
+          // ── CHAT ROUTING CHECK ────────────────────────────────────────────────
+          // Check if this patient has ANY appointment ever (regardless of status/date).
+          // The correct condition: does at least one appointment record exist between
+          // this patient_id and doctor_id, in ANY status?
+          // We fetch all appointments (no upcoming=true, no status filter) to answer this.
+          try {
+            const allApptsRes = await apiFetch('/appointments');
+            const allAppts = allApptsRes.appointments || [];
+
+            if (allAppts.length > 0) {
+              // At least one appointment exists — patient has a prior relationship.
+              // Get or create the chat conversation thread with the doctor.
+              try {
+                const drRes = await apiFetch('/doctors');
+                const doctor = drRes.doctors?.[0];
+                if (doctor?.id) {
+                  const convoRes = await apiFetch('/chat/conversations', {
+                    method: 'POST',
+                    body: JSON.stringify({ doctor_id: doctor.id }),
+                  });
+                  if (convoRes.conversation?.id) {
+                    const threadHref = `/chat/${convoRes.conversation.id}`;
+                    setChatDoctorHref(threadHref);
+                  }
+                }
+              } catch (chatErr) {
+                console.warn('[chat-routing] Could not resolve chat thread, defaulting to /consult:', chatErr);
+              }
+            } else {
+              // Zero appointment records exist for this patient — send to booking page.
+              setChatDoctorHref('/consult');
+            }
+          } catch (allApptsErr) {
+            console.warn('[chat-routing] Could not fetch all appointments for chat routing check:', allApptsErr);
+            // Leave chatDoctorHref as-is ('/consult') on error
+          }
         }
         
         setMembership(memRes.membership);
@@ -1236,8 +1313,8 @@ export default function HomePage() {
   }
 
   // ─── PATIENT HOME VIEW ──────────────────────────────────────────────────────────
-  const consultationsLeft = membership?.consultations_remaining ?? 3;
-  const consultationsTotal = membership?.consultations_total ?? 3;
+  const consultationsLeft = membership?.consultations_remaining ?? 12;
+  const consultationsTotal = membership?.consultations_total ?? 12;
   const consultationsUsed = Math.max(0, consultationsTotal - consultationsLeft);
   const progressPct = Math.min(100, (consultationsUsed / consultationsTotal) * 100);
 
@@ -1339,7 +1416,7 @@ export default function HomePage() {
             {getCallWindowState(upcomingAppointment).isJoinable && (
               <div className="mt-3 text-[11px] font-semibold text-amber-200 bg-amber-950/40 border border-amber-400/30 px-3 py-1.5 rounded-xl flex items-center gap-1.5 animate-pulse">
                 <Clock className="h-3.5 w-3.5 text-amber-300 shrink-0" />
-                <span>Please join within 10 minutes or this consultation will need to be rescheduled.</span>
+                <span>Please join during your 30-minute consultation window.</span>
               </div>
             )}
 
@@ -1368,7 +1445,13 @@ export default function HomePage() {
                 </button>
               )}
               <button
-                onClick={() => router.push(`/chat/${upcomingAppointment.doctors?.users?.id || upcomingAppointment.doctor_id}`)}
+                onClick={() => {
+                  if (chatDoctorHref && chatDoctorHref.startsWith('/chat/')) {
+                    router.push(chatDoctorHref);
+                  } else {
+                    router.push(`/chat/${upcomingAppointment.doctors?.users?.id || upcomingAppointment.doctor_id}`);
+                  }
+                }}
                 className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-white/15 py-2.5 text-xs font-bold text-white backdrop-blur-sm transition hover:bg-white/25"
               >
                 Open Chat
@@ -1445,8 +1528,30 @@ export default function HomePage() {
       <section className="px-5 pt-6">
         <SectionHeader title="Quick Access" />
         <div className="mt-3 grid grid-cols-4 gap-3">
-          {quickLinks.map((link) => {
+          {[
+            { icon: MessageCircle, label: 'Chat with Doctor', href: chatDoctorHref, color: 'bg-bloom-100', onClick: handleChatWithDoctorClick },
+            { icon: Calendar,      label: 'Cycle Tracker',    href: '/cycle',         color: 'bg-petal-100' },
+            { icon: Activity,      label: 'Symptoms Check',   href: '/health',        color: 'bg-green-100' },
+            { icon: BookOpen,      label: 'Wellness Library', href: '/wellness',      color: 'bg-amber-100' },
+          ].map((link) => {
             const Icon = link.icon;
+            if (link.onClick) {
+              return (
+                <button
+                  key={link.label}
+                  onClick={link.onClick}
+                  disabled={navigatingChat}
+                  className="flex flex-col items-center gap-2 focus:outline-none disabled:opacity-75"
+                >
+                  <div className={`flex h-14 w-14 items-center justify-center rounded-2xl ${link.color} transition-transform active:scale-95`}>
+                    <Icon className="h-6 w-6 text-bloom-700" />
+                  </div>
+                  <span className="text-center text-[10px] font-medium leading-tight text-slate-600">
+                    {navigatingChat ? 'Loading...' : link.label}
+                  </span>
+                </button>
+              );
+            }
             return (
               <Link
                 key={link.label}

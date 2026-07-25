@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Edit3, Sparkles, Activity, Calendar, Check, X, Loader2 } from 'lucide-react';
-import { CalendarGrid, type CalendarDay } from '@/components/shebloom';
+import { CalendarGrid, type CalendarDay, type CycleState } from '@/components/shebloom';
 import { StatCard, type Stat } from '@/components/shebloom';
 import { apiFetch } from '@/lib/api';
 import { useAuth } from '@/components/auth-provider';
@@ -40,13 +40,44 @@ export default function CyclePage() {
         apiFetch('/cycle/insights'),
       ]);
 
-      // Convert DB logs into CalendarDay format (day number only for the current month)
-      const days: CalendarDay[] = (logsData.logs || []).map((log: any) => {
-        const d = new Date(log.log_date + 'T00:00:00');
-        return { day: d.getDate(), state: log.state };
-      });
-      setCycleDays(days);
       setInsights(insightsData);
+
+      // Map DB logs into CalendarDay format
+      const daysMap = new Map<number, CycleState>();
+      (logsData.logs || []).forEach((log: any) => {
+        const d = new Date(log.log_date + 'T00:00:00');
+        daysMap.set(d.getDate(), log.state);
+      });
+
+      // Project predicted period days for the displayed calendar month
+      if (insightsData.last_period_start) {
+        const lastStart = new Date(insightsData.last_period_start + 'T00:00:00');
+        const cLen = insightsData.avg_cycle_length || 28;
+        const pLen = insightsData.avg_period_length || 5;
+
+        // Project up to 12 cycle iterations forward
+        for (let cycleIndex = 1; cycleIndex <= 12; cycleIndex++) {
+          const predStart = new Date(lastStart.getTime() + cLen * cycleIndex * 24 * 60 * 60 * 1000);
+          for (let dayOffset = 0; dayOffset < pLen; dayOffset++) {
+            const predDate = new Date(predStart.getTime() + dayOffset * 24 * 60 * 60 * 1000);
+            if (
+              predDate.getFullYear() === currentMonth.getFullYear() &&
+              predDate.getMonth() === currentMonth.getMonth()
+            ) {
+              const dayNum = predDate.getDate();
+              if (!daysMap.has(dayNum) || daysMap.get(dayNum) === 'default') {
+                daysMap.set(dayNum, 'predicted');
+              }
+            }
+          }
+        }
+      }
+
+      const formattedDays: CalendarDay[] = Array.from(daysMap.entries()).map(([day, state]) => ({
+        day,
+        state,
+      }));
+      setCycleDays(formattedDays);
     } catch (err) {
       console.error('Failed to load cycle data', err);
     } finally {
@@ -76,17 +107,18 @@ export default function CyclePage() {
 
   // Compute today's cycle day from last period start
   const todayCycleDay = insights.last_period_start
-    ? Math.floor((Date.now() - new Date(insights.last_period_start).getTime()) / (1000 * 60 * 60 * 24)) + 1
+    ? Math.floor((Date.now() - new Date(insights.last_period_start + 'T00:00:00').getTime()) / (1000 * 60 * 60 * 24)) + 1
     : null;
 
   const cycleLength = insights.avg_cycle_length || 28;
+  const periodLength = insights.avg_period_length || 5;
   const ovulationDay = Math.round(cycleLength / 2);
   const fertileStart = ovulationDay - 2;
   const fertileEnd = ovulationDay + 2;
 
   const isInFertileWindow = todayCycleDay !== null && todayCycleDay >= fertileStart && todayCycleDay <= fertileEnd;
   const isOvulation = todayCycleDay !== null && todayCycleDay === ovulationDay;
-  const isInPeriod = todayCycleDay !== null && todayCycleDay <= (insights.avg_period_length || 5);
+  const isInPeriod = todayCycleDay !== null && todayCycleDay <= periodLength;
 
   const todayPhaseLabel = isInPeriod ? 'Menstrual Phase'
     : isOvulation ? 'Ovulation Day 🌟'
@@ -107,24 +139,44 @@ export default function CyclePage() {
     ? 'Progesterone is high. Focus on rest and self-care.'
     : 'Log your period dates below to start tracking your cycle.';
 
-  // Compute next period estimate
-  const nextPeriodDate = insights.last_period_start
-    ? new Date(new Date(insights.last_period_start).getTime() + cycleLength * 24 * 60 * 60 * 1000)
-    : null;
+  // ── Compute Next Period Prediction ──────────────────────────────────────────
+  let nextPeriodDate: Date | null = null;
+  let daysUntilNextPeriod: number | null = null;
+  let predictedRangeStr: string | null = null;
+
+  if (insights.last_period_start) {
+    const lastStart = new Date(insights.last_period_start + 'T00:00:00');
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+
+    let candidate = new Date(lastStart.getTime() + cycleLength * 24 * 60 * 60 * 1000);
+    while (candidate < now) {
+      candidate = new Date(candidate.getTime() + cycleLength * 24 * 60 * 60 * 1000);
+    }
+    nextPeriodDate = candidate;
+
+    const diffMs = nextPeriodDate.getTime() - now.getTime();
+    daysUntilNextPeriod = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+
+    const nextPeriodEnd = new Date(nextPeriodDate.getTime() + (periodLength - 1) * 24 * 60 * 60 * 1000);
+    const startFmt = nextPeriodDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const endFmt = nextPeriodEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    predictedRangeStr = `${startFmt} – ${endFmt}`;
+  }
 
   const insightStats: Stat[] = [
     {
       label: 'Cycle Length',
-      value: insights.avg_cycle_length?.toString() || '--',
+      value: insights.avg_cycle_length?.toString() || '28',
       unit: 'days',
       icon: Activity,
       iconBg: 'bg-bloom-soft',
-      trend: insights.avg_cycle_length ? 'Regular' : undefined,
+      trend: insights.avg_cycle_length ? 'Regular' : 'Est. 28d',
       trendUp: true,
     },
     {
       label: 'Period Length',
-      value: insights.avg_period_length?.toString() || '--',
+      value: insights.avg_period_length?.toString() || '5',
       unit: 'days',
       icon: Calendar,
       iconBg: 'bg-petal-100',
@@ -149,7 +201,7 @@ export default function CyclePage() {
         </div>
       </header>
 
-      {/* Today's info */}
+      {/* Today's info card */}
       <section className="px-5 pt-5">
         <div className="overflow-hidden rounded-3xl bg-bloom-gradient p-5 text-white shadow-bloom-btn">
           <p className="text-xs font-medium text-white/80">Today{todayCycleDay ? ` · Day ${todayCycleDay}` : ''}</p>
@@ -174,6 +226,55 @@ export default function CyclePage() {
               </p>
             </div>
           </div>
+        </div>
+      </section>
+
+      {/* Dedicated Next Period Prediction Banner */}
+      <section className="px-5 pt-4">
+        <div className="rounded-3xl border-2 border-orange-200 bg-orange-50/70 p-4.5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-orange-100 text-orange-600 font-bold text-base">
+                📅
+              </div>
+              <div>
+                <h3 className="text-sm font-extrabold text-slate-800">Next Period Prediction</h3>
+                <p className="text-[11px] text-slate-500 font-medium">Based on your {cycleLength}-day cycle</p>
+              </div>
+            </div>
+            {daysUntilNextPeriod !== null && (
+              <span className="rounded-full bg-orange-500 px-3 py-1 text-xs font-bold text-white shadow-sm">
+                {daysUntilNextPeriod > 0
+                  ? `In ${daysUntilNextPeriod} days`
+                  : daysUntilNextPeriod === 0
+                  ? 'Starts Today'
+                  : 'Due Now'}
+              </span>
+            )}
+          </div>
+
+          {nextPeriodDate ? (
+            <div className="mt-3.5 pt-3 border-t border-orange-200/80 flex items-center justify-between">
+              <div>
+                <p className="text-[10px] uppercase font-extrabold text-orange-700 tracking-wider">Predicted Start Date</p>
+                <p className="text-base font-black text-slate-800 mt-0.5">
+                  {nextPeriodDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-[10px] uppercase font-extrabold text-slate-400 tracking-wider">Expected Window</p>
+                <p className="text-xs font-bold text-slate-700 mt-0.5">
+                  {predictedRangeStr}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="mt-3 pt-3 border-t border-orange-200/80">
+              <p className="text-xs text-slate-600 font-medium">
+                Log your period start date below to view your personalized next period prediction! 🌸
+              </p>
+            </div>
+          )}
         </div>
       </section>
 
@@ -285,14 +386,14 @@ export default function CyclePage() {
           )}
         </div>
 
-        {/* Cycle terms explainer — helps users who don't know what these mean */}
+        {/* Cycle terms explainer */}
         <div className="mt-3 rounded-2xl bg-bloom-50 border border-bloom-100 p-4 space-y-3">
           <p className="text-xs font-bold text-bloom-700">🌸 What do these numbers mean?</p>
           <div className="space-y-2.5">
             <div>
               <p className="text-xs font-semibold text-slate-700">Cycle Length</p>
               <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
-                The number of days from the <strong>first day of your period</strong> to the first day of your <em>next</em> period. The average is 28 days, but anywhere from 21–35 days is normal. Don't worry if yours is different!
+                The number of days from the <strong>first day of your period</strong> to the first day of your <em>next</em> period. The average is 28 days, but anywhere from 21–35 days is normal. Don&apos;t worry if yours is different!
               </p>
             </div>
             <div>

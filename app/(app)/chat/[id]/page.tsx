@@ -19,6 +19,7 @@ import {
   CheckCircle2,
   Stethoscope,
   Bot,
+  Lock,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { apiFetch } from '@/lib/api';
@@ -135,7 +136,9 @@ export default function ChatPage() {
         setRealConversationId(convo.id);
         
         // Resolve other user name and details
-        const other = profile?.role === 'doctor' ? convo.patients : convo.doctors?.users;
+        const other = profile?.role === 'doctor' 
+          ? convo.patients 
+          : (convo.doctors?.users || convo.doctors || { full_name: 'Dr. Deepa Madhavan', avatar_url: '/images/dr_deepa_cutout.png', specialty: 'Gynecologist & IVF Specialist' });
         setOtherUser(other);
         
         loadMessages(convo.id);
@@ -180,21 +183,29 @@ export default function ChatPage() {
     }
   }, [profile, otherUserId]);
 
-  // Query appointments to find the confirmed booking status
+  const [hasCompletedConsultation, setHasCompletedConsultation] = useState<boolean>(false);
+
+  // Query appointments to find confirmed booking status and previous consultation history
   useEffect(() => {
     if (profile && otherUserId) {
       if (profile.role === 'patient') {
         apiFetch('/appointments')
           .then(res => {
             const list = res.appointments || [];
+            const hasCompleted = list.some(
+              (a: any) => a.status === 'completed' || a.display_status === 'completed'
+            );
+            setHasCompletedConsultation(hasCompleted);
+
             const booking = list.find(
-              (a: any) => (a.doctors?.users?.id === otherUserId || a.doctor_id === otherUserId) && ['pending', 'confirmed', 'rescheduled', 'reschedule_requested'].includes(a.status)
+              (a: any) => (a.doctors?.users?.id === otherUserId || a.doctor_id === otherUserId || a.doctors?.id === otherUserId) && ['pending', 'confirmed', 'rescheduled', 'reschedule_requested'].includes(a.status)
             );
             setActiveBooking(booking);
             setIsConfirmedBooking(['confirmed', 'rescheduled', 'reschedule_requested'].includes(booking?.status));
           })
           .catch(console.error);
       } else if (profile.role === 'doctor') {
+        setHasCompletedConsultation(true);
         apiFetch('/doctor-portal/appointments')
           .then(res => {
             const list = res.appointments || [];
@@ -331,6 +342,18 @@ export default function ChatPage() {
     const textToSend = input.trim();
     setInput('');
 
+    // Instant optimistic message update for 0ms UI delay
+    const tempId = `temp-${Date.now()}`;
+    const optimisticMsg: Message = {
+      id: tempId,
+      conversation_id: realConversationId || 'temp-convo',
+      sender_id: profile?.id || user?.id || 'me',
+      content: textToSend,
+      attachment_url: null,
+      created_at: new Date().toISOString(),
+    };
+    setMessages((prev) => [...prev, optimisticMsg]);
+
     try {
       if (isAiMode) {
         // AI Health Assistant Endpoint
@@ -353,7 +376,7 @@ export default function ChatPage() {
         });
 
         try {
-          const channel = supabase.channel('shebloom-global-notifications');
+          const channel = supabase.channel('shebloom-chat-notifications');
           channel.send({
             type: 'broadcast',
             event: 'new_chat_message',
@@ -363,6 +386,8 @@ export default function ChatPage() {
               senderName: profile?.full_name || (profile?.role === 'doctor' ? 'Dr. Deepa Madhavan' : 'Patient'),
               senderAvatar: profile?.avatar_url,
               recipientId: otherUserId,
+              recipientUserId: otherUser?.user_id || otherUser?.id || otherUserId,
+              doctorUserId: otherUserId,
               content: textToSend,
             },
           });
@@ -374,6 +399,8 @@ export default function ChatPage() {
       }
     } catch (err) {
       console.error('Failed to send message', err);
+      // Remove optimistic message on failure
+      setMessages((prev) => prev.filter((m) => m.id !== tempId));
     } finally {
       setSending(false);
     }
@@ -498,16 +525,22 @@ export default function ChatPage() {
           </p>
         </div>
 
-        {/* Action Buttons: Voice, Video calls, Reschedule, Patient Info Panel */}
+        {/* Action Buttons: Reschedule, Patient Info Panel */}
         <div className="flex items-center gap-1">
-          {activeBooking && !isAiMode && (
+          {profile?.role === 'patient' && !isAiMode && (
             <button
-              onClick={() => setShowRescheduleModal(true)}
+              onClick={() => {
+                if (activeBooking) {
+                  setShowRescheduleModal(true);
+                } else {
+                  router.push('/consult');
+                }
+              }}
               title="Reschedule Consultation"
-              className="flex h-9 px-2.5 items-center gap-1 rounded-full text-[#5b21b6] hover:bg-pink-50 text-xs font-bold border border-pink-200 shadow-2xs"
+              className="flex h-9 px-3 items-center gap-1.5 rounded-full text-[#5b21b6] bg-pink-50 hover:bg-pink-100 text-xs font-bold border border-pink-200 shadow-xs transition-transform active:scale-95"
             >
               <Calendar className="h-4 w-4" />
-              <span className="hidden sm:inline">Reschedule</span>
+              <span>Reschedule</span>
             </button>
           )}
 
@@ -809,12 +842,12 @@ export default function ChatPage() {
 
       {/* Input bar / lock banner */}
       <div className="border-t border-bloom-100 bg-white px-4 py-3 shrink-0">
-        {!isConfirmedBooking && messages.length === 0 && !activeBooking && profile?.role === 'patient' ? (
-          /* Locked State for Patients with 0 history & 0 bookings */
-          <div className="rounded-2xl bg-amber-50 border border-amber-200 px-4 py-3 flex gap-2.5 items-start">
-            <Clock className="h-4.5 w-4.5 text-amber-600 shrink-0 mt-0.5" />
-            <p className="text-[11px] text-amber-700 leading-normal font-semibold">
-              Chat features and calling capabilities will be unlocked once your booking status is set to <span className="font-bold">confirmed</span>.
+        {!hasCompletedConsultation && profile?.role === 'patient' && !isAiMode ? (
+          /* First-time consultation chat lock banner */
+          <div className="rounded-2xl bg-amber-50 border border-amber-200 px-4 py-3 flex gap-2.5 items-center">
+            <Lock className="h-4.5 w-4.5 text-amber-600 shrink-0" />
+            <p className="text-xs text-amber-800 leading-snug font-semibold">
+              Chat feature is enabled only after your first consultation.
             </p>
           </div>
         ) : (

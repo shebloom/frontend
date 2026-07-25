@@ -151,6 +151,7 @@ export default function AdminContentPage() {
         setIsUploadingVideo(false);
         setUploadProgress(0);
         const errMsg = err?.message || 'Failed to upload video to Cloudinary CDN.';
+        console.error(`[wellness-upload] Cloudinary upload FAILED: ${errMsg}`);
         setUploadError(`Video Upload Failed: ${errMsg}`);
         return; // Abort saving session if Cloudinary upload fails!
       } finally {
@@ -185,6 +186,8 @@ export default function AdminContentPage() {
 
       if (res.session) {
         setSessions([res.session, ...sessions]);
+      } else {
+        console.warn('[wellness-upload] DB save returned no session object in response');
       }
       setShowSessionForm(false);
       setNewSession({
@@ -202,6 +205,7 @@ export default function AdminContentPage() {
       setUploadProgress(0);
       setUploadPhase(null);
     } catch (err: any) {
+      console.error(`[wellness-upload] DB save failed: ${err?.message}`);
       setUploadError(`Failed to create wellness session: ${err?.message || 'Database write error'}`);
     }
   };

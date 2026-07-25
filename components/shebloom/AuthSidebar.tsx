@@ -9,6 +9,7 @@ export function AuthSidebar({ className = '' }: { className?: string }) {
       <img 
         src="/images/sidebar_clean_bg.png" 
         alt="SheBloom Illustration" 
+        suppressHydrationWarning
         className="absolute inset-0 h-full w-full object-cover object-left z-10 pointer-events-none select-none"
       />
 

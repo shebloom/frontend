@@ -25,7 +25,6 @@ export function PWAInstallManager() {
     // 1. Register service worker
     if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js')
-        .then(() => console.log('PWA Service Worker registered successfully.'))
         .catch(err => console.error('Service Worker registration failed:', err));
     }
 
@@ -65,8 +64,7 @@ export function PWAInstallManager() {
       return;
     }
     deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    console.log(`User response to install prompt: ${outcome}`);
+    await deferredPrompt.userChoice;
     setDeferredPrompt(null);
     setShowBanner(false);
     setShowModal(false);

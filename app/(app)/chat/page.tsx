@@ -93,7 +93,23 @@ export default function ChatHubPage() {
 
         {/* THREAD 2: Chat with Dr. Deepa Madhavan */}
         <div 
-          onClick={() => {
+          onClick={async () => {
+            try {
+              const drRes = await apiFetch('/doctors');
+              const doctor = drRes.doctors?.[0];
+              if (doctor?.id) {
+                const convoRes = await apiFetch('/chat/conversations', {
+                  method: 'POST',
+                  body: JSON.stringify({ doctor_id: doctor.id }),
+                });
+                if (convoRes.conversation?.id) {
+                  router.push(`/chat/${convoRes.conversation.id}`);
+                  return;
+                }
+              }
+            } catch (err) {
+              console.warn('Failed to resolve conversation:', err);
+            }
             const targetId = drDeepa?.id || drDeepa?.user_id || '00000000-0000-0000-0000-0000000000d1';
             router.push(`/chat/${targetId}`);
           }}
