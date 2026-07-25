@@ -3,7 +3,7 @@
  */
 
 /** Video consultation join window in minutes */
-export const CONSULTATION_JOIN_WINDOW_MINUTES = 20;
+export const CONSULTATION_JOIN_WINDOW_MINUTES = 30;
 
 /** Video consultation join window in milliseconds */
 export const CONSULTATION_JOIN_WINDOW_MS = CONSULTATION_JOIN_WINDOW_MINUTES * 60 * 1000;
