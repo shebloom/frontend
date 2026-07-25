@@ -104,12 +104,31 @@ export default function HealthPage() {
     if (reportInputRef.current) reportInputRef.current.value = '';
   };
 
+  // Prescriptions State
+  const [prescriptions, setPrescriptions] = useState<any[]>([]);
+  const [loadingPrescriptions, setLoadingPrescriptions] = useState(false);
+
+  const loadPrescriptions = async () => {
+    setLoadingPrescriptions(true);
+    try {
+      const data = await apiFetch('/health-records/prescriptions');
+      setPrescriptions(data.prescriptions || []);
+    } catch (err) {
+      console.error('Failed to load prescriptions', err);
+    } finally {
+      setLoadingPrescriptions(false);
+    }
+  };
+
   useEffect(() => {
     if (activeTab === 'Symptoms') {
       loadSymptoms();
     }
     if (activeTab === 'Reports' || activeTab === 'Overview') {
       loadReports();
+    }
+    if (activeTab === 'Prescriptions') {
+      loadPrescriptions();
     }
   }, [activeTab]);
 
@@ -570,23 +589,39 @@ export default function HealthPage() {
       {activeTab === 'Prescriptions' && (
         <section className="px-5 pt-5">
           <div className="rounded-2xl bg-white p-5 shadow-bloom-card border border-bloom-100/60">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 mb-3">
               <Pill className="h-5 w-5 text-bloom-600" />
-              <h2 className="text-base font-semibold text-slate-800">Active Prescriptions</h2>
+              <h2 className="text-base font-semibold text-slate-800">Your Prescriptions</h2>
             </div>
-            <div className="mt-3 space-y-3">
-              <div className="rounded-xl bg-lavender-50 p-3">
-                <p className="text-sm font-medium text-slate-700">Folic Acid 5mg</p>
-                <p className="text-xs text-slate-400">1 tablet daily · 30 days</p>
+            {loadingPrescriptions ? (
+              <p className="text-xs text-slate-400 font-semibold py-4 text-center">Loading prescriptions...</p>
+            ) : prescriptions.length > 0 ? (
+              <div className="space-y-3">
+                {prescriptions.map((p: any) => (
+                  <div key={p.id} className="rounded-xl bg-lavender-50 p-3.5 flex items-center justify-between gap-3 border border-lavender-100">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-bold text-slate-800 truncate">{p.file_name || 'Medical Prescription'}</p>
+                      <p className="text-xs text-slate-500 mt-0.5">{new Date(p.record_date).toLocaleDateString('en-GB')}</p>
+                      {p.notes && <p className="text-xs text-bloom-700 italic mt-1">{p.notes}</p>}
+                    </div>
+                    {p.file_url && (
+                      <button
+                        type="button"
+                        onClick={() => openMedicalReport(p.file_url, p.file_name || 'prescription.pdf')}
+                        className="px-3 py-1.5 rounded-lg bg-bloom-600 hover:bg-bloom-700 text-white text-xs font-bold transition flex items-center gap-1 shrink-0"
+                      >
+                        <Eye className="w-3.5 h-3.5" /> View PDF
+                      </button>
+                    )}
+                  </div>
+                ))}
               </div>
-              <div className="rounded-xl bg-lavender-50 p-3">
-                <p className="text-sm font-medium text-slate-700">Vitamin D3</p>
-                <p className="text-xs text-slate-400">1 tablet weekly · 12 weeks</p>
+            ) : (
+              <div className="text-center py-6">
+                <p className="text-xs text-slate-500 font-medium">No prescriptions issued yet.</p>
+                <p className="text-[10px] text-slate-400 mt-1">Prescriptions issued by your doctor during consultations will appear here.</p>
               </div>
-            </div>
-            <p className="mt-4 text-center text-xs text-slate-400">
-              Prescribed by Dr. Deepa Madhavan
-            </p>
+            )}
           </div>
         </section>
       )}
