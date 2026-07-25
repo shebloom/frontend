@@ -293,55 +293,53 @@ export default function HomePage() {
 
         void (async () => {
           try {
+            const payload = isDoctor
+              ? {
+                  appointmentId: apptId,
+                  callerId: profile?.id,
+                  callerName: profile?.full_name || 'Dr. Deepa Madhavan',
+                  callerAvatar: profile?.avatar_url,
+                  recipientId: recipientUserId,
+                  doctorId: profile?.id,
+                  patientId: recipientUserId,
+                  roomUrl: res.joinUrl,
+                  date: appointment?.appointment_date,
+                  slot: appointment?.slot_time,
+                  expiresAt: Date.now() + 15 * 60 * 1000,
+                }
+              : {
+                  appointmentId: apptId,
+                  callerId: profile?.id,
+                  callerName: profile?.full_name || 'Patient',
+                  callerAvatar: profile?.avatar_url,
+                  recipientId: recipientUserId,
+                  doctorId: recipientUserId,
+                  patientId: profile?.id,
+                  roomUrl: res.joinUrl,
+                  date: appointment?.appointment_date,
+                  slot: appointment?.slot_time,
+                  expiresAt: Date.now() + 15 * 60 * 1000,
+                };
+
+            const eventName = isDoctor ? 'incoming_call' : 'patient_is_waiting';
+
+            // 1. Send via dedicated room channel (non-blocking)
             const roomChannel = supabase.channel(`appointment-room-${apptId}`, {
               config: { broadcast: { self: false } },
             });
-
-            // Timeout after 5 s so a stalled subscription doesn't leak forever
-            await Promise.race([
-              new Promise<void>((resolve) => {
-                roomChannel.subscribe((status) => {
-                  if (status === 'SUBSCRIBED') resolve();
-                });
-              }),
-              new Promise<void>((_, reject) =>
-                setTimeout(() => reject(new Error('subscribe timeout')), 5000)
-              ),
-            ]);
-
-            roomChannel.send({
-              type: 'broadcast',
-              event: isDoctor ? 'incoming_call' : 'patient_is_waiting',
-              payload: isDoctor
-                ? {
-                    appointmentId: apptId,
-                    callerId: profile?.id,
-                    callerName: profile?.full_name || 'Dr. Deepa Madhavan',
-                    callerAvatar: profile?.avatar_url,
-                    recipientId: recipientUserId,
-                    doctorId: profile?.id,
-                    patientId: recipientUserId,
-                    roomUrl: res.joinUrl,
-                    date: appointment?.appointment_date,
-                    slot: appointment?.slot_time,
-                    expiresAt: Date.now() + 15 * 60 * 1000,
-                  }
-                : {
-                    appointmentId: apptId,
-                    callerId: profile?.id,
-                    callerName: profile?.full_name || 'Patient',
-                    callerAvatar: profile?.avatar_url,
-                    recipientId: recipientUserId,
-                    doctorId: recipientUserId,
-                    patientId: profile?.id,
-                    roomUrl: res.joinUrl,
-                    date: appointment?.appointment_date,
-                    slot: appointment?.slot_time,
-                    expiresAt: Date.now() + 15 * 60 * 1000,
-                  },
+            roomChannel.subscribe((status) => {
+              if (status === 'SUBSCRIBED') {
+                roomChannel.send({ type: 'broadcast', event: eventName, payload }).catch(() => {});
+              }
             });
+            // Also attempt immediate send in case channel is already active
+            roomChannel.send({ type: 'broadcast', event: eventName, payload }).catch(() => {});
+
+            // 2. Dual broadcast via global notifications channel for instant delivery
+            const notifChannel = supabase.channel('shebloom-notifications');
+            notifChannel.send({ type: 'broadcast', event: eventName, payload }).catch(() => {});
           } catch (bcErr) {
-            console.warn('[Call] Realtime call broadcast error (non-blocking):', bcErr);
+            console.warn('[Call] Realtime call broadcast notice (non-blocking):', bcErr);
           }
         })();
 

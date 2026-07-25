@@ -253,6 +253,46 @@ export function RealtimeNotificationProvider({ children }: { children: React.Rea
           subscribeToAppointmentRooms();
         }
       })
+      .on('broadcast', { event: 'incoming_call' }, ({ payload }) => {
+        if (!payload || payload.recipientId !== profile.id || payload.callerId === profile.id) return;
+        if (activeCallRoom !== null || (typeof window !== 'undefined' && (window as any).shebloom_is_in_call)) return;
+
+        const callData: CallAlert = {
+          appointmentId: payload.appointmentId,
+          callerId: payload.callerId,
+          callerName: payload.callerName || 'Doctor',
+          callerAvatar: payload.callerAvatar,
+          recipientId: payload.recipientId,
+          roomUrl: payload.roomUrl,
+          date: payload.date,
+          slot: payload.slot,
+          expiresAt: payload.expiresAt || (Date.now() + 15 * 60 * 1000),
+          type: 'incoming_call',
+        };
+
+        setIncomingCall(callData);
+        try { sessionStorage.setItem('shebloom_pending_call_alert', JSON.stringify(callData)); } catch (e) {}
+      })
+      .on('broadcast', { event: 'patient_is_waiting' }, ({ payload }) => {
+        if (!payload || payload.recipientId !== profile.id || payload.callerId === profile.id) return;
+        if (activeCallRoom !== null || (typeof window !== 'undefined' && (window as any).shebloom_is_in_call)) return;
+
+        const callData: CallAlert = {
+          appointmentId: payload.appointmentId,
+          callerId: payload.callerId,
+          callerName: payload.callerName || 'Patient',
+          callerAvatar: payload.callerAvatar,
+          recipientId: payload.recipientId,
+          roomUrl: payload.roomUrl,
+          date: payload.date,
+          slot: payload.slot,
+          expiresAt: payload.expiresAt || (Date.now() + 15 * 60 * 1000),
+          type: 'patient_is_waiting',
+        };
+
+        setIncomingCall(callData);
+        try { sessionStorage.setItem('shebloom_pending_call_alert', JSON.stringify(callData)); } catch (e) {}
+      })
       .subscribe();
 
     return () => {
