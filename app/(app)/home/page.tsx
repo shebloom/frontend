@@ -312,6 +312,8 @@ export default function HomePage() {
           });
           setShowVideoModal(true);
         }
+      } else if (res.error) {
+        alert(res.error);
       }
     } catch (err: any) {
       alert(err.message || 'Unable to join the call at this time.');
