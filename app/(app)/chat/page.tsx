@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Bot, ShieldCheck, ChevronRight, Info, Sparkles } from 'lucide-react';
+import { ShieldCheck, ChevronRight } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 
 export default function ChatHubPage() {
@@ -54,7 +54,7 @@ export default function ChatHubPage() {
           Health Support & Chat
         </h1>
         <p className="text-xs text-slate-500 font-medium mt-1">
-          Choose an AI assistant for quick general questions, or chat directly with Dr. Deepa Madhavan.
+          Connect directly with Dr. Deepa Madhavan for official medical care and consultations.
         </p>
       </div>
 
