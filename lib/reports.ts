@@ -57,8 +57,10 @@ export async function openMedicalReport(fileUrl: string, fileName?: string): Pro
     }
   } else {
     let cleanPath = fileUrl;
+
+    // Strip any leading /api prefix — we'll add it back correctly below
     if (cleanPath.startsWith('/api/')) {
-      cleanPath = cleanPath.substring(4);
+      cleanPath = cleanPath.substring(4); // becomes /health-records/...
     } else if (cleanPath === '/api') {
       cleanPath = '';
     }
@@ -67,12 +69,19 @@ export async function openMedicalReport(fileUrl: string, fileName?: string): Pro
       cleanPath = `/${cleanPath}`;
     }
 
-    // If it's not already pointing to an API path, treat as health-records relative path
+    // If it's a raw Supabase storage path (UUID/filename, no leading route),
+    // e.g. "330bdbeb-xxx/1784975521766-report.pdf" → already prefixed with /
+    // Route it through the backend download API.
     if (!cleanPath.startsWith('/health-records') && !cleanPath.startsWith('/doctor-portal')) {
-      cleanPath = `/health-records/documents${cleanPath}`;
+      cleanPath = `/api/health-records/documents${cleanPath}`;
+    } else {
+      // Ensure /api prefix is present
+      cleanPath = `/api${cleanPath}`;
     }
 
-    targetEndpoint = `${baseUrl}${cleanPath}`;
+    // baseUrl may or may not already include /api — strip it if so
+    const apiRoot = baseUrl.endsWith('/api') ? baseUrl.slice(0, -4) : baseUrl;
+    targetEndpoint = `${apiRoot}${cleanPath}`;
   }
 
   try {

@@ -645,17 +645,17 @@ export default function HomePage() {
     if (!joinCallId || autoJoinFiredRef.current || isLoading) return;
     if (!profile || profile.role === 'admin') return;
 
-    // Find the matching appointment in the loaded list
-    const match = upcomingAppointments.find((a: any) => a.id === joinCallId);
-    if (!match) return; // Appointments not loaded yet or not found — wait for next render
+    // Try to find the appointment in the loaded list for richer broadcast payload,
+    // but don't block if it's not there — the backend /join API validates everything.
+    const match = upcomingAppointments.find((a: any) => a.id === joinCallId) || null;
 
     autoJoinFiredRef.current = true;
     // Remove the query param from the URL without re-mounting the component
     window.history.replaceState(null, '', '/home');
-    // Trigger the join call flow
+    // Trigger the join call flow — works even if match is null
     handleJoinCall(joinCallId, match);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams, isLoading, upcomingAppointments, profile]);
+  }, [searchParams, isLoading, profile]);
 
   const handleAddSlot = () => {
     // Check if slot already exists

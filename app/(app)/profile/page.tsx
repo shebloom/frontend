@@ -157,6 +157,8 @@ export default function ProfilePage() {
     if (!url) return '';
     const token = localStorage.getItem('token') || '';
     const baseUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api').replace(/\/+$/, '');
+    // Strip /api suffix from baseUrl so we can always prepend /api ourselves cleanly
+    const apiRoot = baseUrl.endsWith('/api') ? baseUrl.slice(0, -4) : baseUrl;
 
     if (url.startsWith('http://') || url.startsWith('https://')) {
       try {
@@ -173,16 +175,23 @@ export default function ProfilePage() {
 
     let cleanUrl = url;
     if (cleanUrl.startsWith('/api/')) {
-      cleanUrl = cleanUrl.substring(4);
+      cleanUrl = cleanUrl.substring(4); // strip to /health-records/...
     } else if (cleanUrl === '/api') {
       cleanUrl = '';
     }
+
     let path = cleanUrl;
-    if (!path.startsWith('/health-records/documents/')) {
-      path = `/health-records/documents/${cleanUrl.replace(/^\/+/, '')}`;
+    if (!path.startsWith('/')) path = `/${path}`;
+
+    // Route raw storage paths (UUID/filename) and non-API paths through the download endpoint
+    if (!path.startsWith('/health-records') && !path.startsWith('/doctor-portal')) {
+      path = `/api/health-records/documents${path}`;
+    } else {
+      path = `/api${path}`;
     }
+
     const separator = path.includes('?') ? '&' : '?';
-    return `${baseUrl}${path}${separator}token=${token}`;
+    return `${apiRoot}${path}${separator}token=${token}`;
   };
 
   // Consultation History
