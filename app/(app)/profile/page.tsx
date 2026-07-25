@@ -1069,9 +1069,18 @@ export default function ProfilePage() {
 
                           if (isJoinable) {
                             return (
-                              <div className="w-full mt-1.5 p-2 bg-amber-50 border border-amber-200 rounded-xl text-[10px] text-amber-800 font-semibold flex items-center gap-1.5">
-                                <Clock className="h-3 w-3 text-amber-600 shrink-0" />
-                                <span>Please join within 10 minutes or this consultation will need to be rescheduled.</span>
+                              <div className="w-full mt-1.5 p-2 bg-amber-50 border border-amber-200 rounded-xl text-[10px] text-amber-800 font-semibold flex flex-col gap-1.5">
+                                <div className="flex items-center gap-1.5">
+                                  <Clock className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                                  <span>Please join within the 30-minute consultation window.</span>
+                                </div>
+                                <button
+                                  onClick={() => router.push('/home')}
+                                  className="w-full py-1.5 bg-[#5b21b6] text-white font-bold text-xs rounded-lg hover:bg-[#4c1d95] transition cursor-pointer flex items-center justify-center gap-1"
+                                >
+                                  <Video className="w-3.5 h-3.5" />
+                                  Join Call Now
+                                </button>
                               </div>
                             );
                           }

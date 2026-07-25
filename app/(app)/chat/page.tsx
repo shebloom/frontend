@@ -59,39 +59,7 @@ export default function ChatHubPage() {
       </div>
 
       <div className="space-y-4">
-        
-        {/* THREAD 1: AI Health Assistant */}
-        <div 
-          onClick={() => router.push('/chat/00000000-0000-0000-0000-0000000000a1')}
-          className="bg-gradient-to-br from-purple-900 via-[#5b21b6] to-[#4c1d95] text-white rounded-[32px] p-6 shadow-[0_12px_30px_rgba(91,33,182,0.25)] relative overflow-hidden cursor-pointer hover:scale-[1.01] transition-all group border border-purple-500/30"
-        >
-          <Sparkles className="absolute -right-3 -bottom-3 w-32 h-32 text-white/5 pointer-events-none" />
-
-          <div className="flex items-start justify-between relative z-10">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center border border-white/30 text-white shadow-inner">
-                <Bot className="w-7 h-7" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-lg font-bold font-playfair">AI Health Assistant</h3>
-                  <span className="text-[9px] font-black uppercase bg-pink-500 text-white px-2 py-0.5 rounded-full tracking-wider">
-                    24/7 AI
-                  </span>
-                </div>
-                <p className="text-xs text-purple-200 font-medium mt-0.5">
-                  General Education • Menstrual & Gynecological Support
-                </p>
-              </div>
-            </div>
-
-            <div className="w-8 h-8 rounded-full bg-white/10 group-hover:bg-white/20 flex items-center justify-center transition-colors">
-              <ChevronRight className="w-5 h-5 text-white" />
-            </div>
-          </div>
-        </div>
-
-        {/* THREAD 2: Chat with Dr. Deepa Madhavan */}
+        {/* Direct Chat with Dr. Deepa Madhavan */}
         <div 
           onClick={async () => {
             try {

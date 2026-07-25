@@ -794,13 +794,12 @@ export default function HomePage() {
 
                       {/* Join Video Call Button */}
                       <button
-                        disabled={!state.isJoinable}
                         onClick={() => handleJoinCall(appt.id, appt)}
                         className={cn(
-                          "w-full py-2.5 px-4 rounded-xl font-extrabold text-xs flex items-center justify-center gap-2 shadow-sm transition-all",
+                          "w-full py-2.5 px-4 rounded-xl font-extrabold text-xs flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer",
                           state.isJoinable
-                            ? "bg-[#5b21b6] text-white hover:bg-[#4c1d95] cursor-pointer"
-                            : "bg-slate-100 text-slate-400 cursor-not-allowed shadow-none"
+                            ? "bg-[#5b21b6] text-white hover:bg-[#4c1d95]"
+                            : "bg-purple-100 text-[#5b21b6] hover:bg-purple-200"
                         )}
                       >
                         <Video className="h-4 w-4" />
@@ -1433,13 +1432,12 @@ export default function HomePage() {
                 </button>
               ) : (
                 <button
-                  disabled={!isCallActive(upcomingAppointment.appointment_date, upcomingAppointment.slot_time, upcomingAppointment)}
                   onClick={() => handleJoinCall(upcomingAppointment.id, upcomingAppointment)}
                   className={cn(
-                    "flex flex-1 items-center justify-center gap-1.5 rounded-xl font-extrabold py-2.5 text-xs shadow-md transition active:scale-95",
+                    "flex flex-1 items-center justify-center gap-1.5 rounded-xl font-extrabold py-2.5 text-xs shadow-md transition active:scale-95 cursor-pointer",
                     isCallActive(upcomingAppointment.appointment_date, upcomingAppointment.slot_time, upcomingAppointment)
-                      ? "bg-white text-bloom-700 hover:bg-white/90 cursor-pointer"
-                      : "bg-slate-100 text-slate-400 cursor-not-allowed shadow-none opacity-80"
+                      ? "bg-white text-bloom-700 hover:bg-white/90"
+                      : "bg-purple-100 text-[#5b21b6] hover:bg-purple-200"
                   )}
                 >
                   <Video className="h-4 w-4" />
