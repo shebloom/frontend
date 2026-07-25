@@ -11,6 +11,19 @@ export function PWAInstallManager() {
   const [isStandalone, setIsStandalone] = useState(false);
 
   useEffect(() => {
+    // 1. Check if app is already installed or open in standalone mode
+    const isStandaloneMode = 
+      (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+      (navigator as any).standalone ||
+      document.referrer.startsWith('android-app://');
+
+    const isInstalledFlag = localStorage.getItem('pwa-installed') === 'true';
+
+    if (isStandaloneMode || isInstalledFlag) {
+      setIsStandalone(true);
+      return;
+    }
+
     // Check if dismissed recently (within 2 days)
     const dismissedTime = localStorage.getItem('pwa-prompt-dismissed-time');
     let isRecentlyDismissed = false;
@@ -22,31 +35,37 @@ export function PWAInstallManager() {
       }
     }
 
-    // 1. Register service worker
+    // 2. Register service worker
     if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js')
         .catch(err => console.error('Service Worker registration failed:', err));
     }
 
-    // 2. Check if already open as standalone PWA
-    const standaloneCheck = window.matchMedia('(display-mode: standalone)').matches;
-    setIsStandalone(standaloneCheck);
-
     // 3. Listen to beforeinstallprompt
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e);
-      // Only show banner if we are NOT in standalone mode and NOT recently dismissed
-      if (!standaloneCheck && !isRecentlyDismissed) {
+      // Only show banner if app is NOT already installed and NOT recently dismissed
+      if (!isStandaloneMode && !isInstalledFlag && !isRecentlyDismissed) {
         setShowBanner(true);
       }
     };
 
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    // 4. Listen to appinstalled event
+    const handleAppInstalled = () => {
+      localStorage.setItem('pwa-installed', 'true');
+      setIsStandalone(true);
+      setShowBanner(false);
+      setShowModal(false);
+      setDeferredPrompt(null);
+    };
 
-    // 4. Timer to show modal after 2 minutes (120,000ms)
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    window.addEventListener('appinstalled', handleAppInstalled);
+
+    // 5. Timer to show modal after 2 minutes (120,000ms)
     let modalTimer: NodeJS.Timeout;
-    if (!standaloneCheck && !isRecentlyDismissed) {
+    if (!isStandaloneMode && !isInstalledFlag && !isRecentlyDismissed) {
       modalTimer = setTimeout(() => {
         setShowModal(true);
       }, 120000); // 2 minutes
@@ -54,6 +73,7 @@ export function PWAInstallManager() {
 
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      window.removeEventListener('appinstalled', handleAppInstalled);
       if (modalTimer) clearTimeout(modalTimer);
     };
   }, []);
@@ -64,7 +84,11 @@ export function PWAInstallManager() {
       return;
     }
     deferredPrompt.prompt();
-    await deferredPrompt.userChoice;
+    const choiceResult = await deferredPrompt.userChoice;
+    if (choiceResult?.outcome === 'accepted') {
+      localStorage.setItem('pwa-installed', 'true');
+      setIsStandalone(true);
+    }
     setDeferredPrompt(null);
     setShowBanner(false);
     setShowModal(false);

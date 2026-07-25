@@ -54,6 +54,15 @@ export function RealtimeNotificationProvider({ children }: { children: React.Rea
     content: string;
   } | null>(null);
 
+  // General notification toast (appointment booked / rescheduled)
+  const [generalToast, setGeneralToast] = useState<{
+    id: string;
+    title: string;
+    body: string;
+    type: 'appointment' | 'reschedule';
+    actionPath?: string;
+  } | null>(null);
+
   // Store subscribed room channels so we can clean them up
   const roomChannelsRef = useRef<ReturnType<typeof supabase.channel>[]>([]);
 
@@ -105,132 +114,153 @@ export function RealtimeNotificationProvider({ children }: { children: React.Rea
   }, [profile]);
 
   // ─── Subscribe to Appointment-Specific Rooms (ISOLATED SIGNALING) ─────────
+  const subscribeToAppointmentRooms = async () => {
+    if (!profile?.id) return;
+    try {
+      roomChannelsRef.current.forEach((ch) => supabase.removeChannel(ch));
+      roomChannelsRef.current = [];
+
+      const res = await apiFetch('/appointments');
+      const appointments: any[] = res.appointments || [];
+
+      for (const appt of appointments) {
+        const roomName = `appointment-room-${appt.id}`;
+        const ch = supabase.channel(roomName, {
+          config: { broadcast: { self: false } },
+        });
+
+        ch
+          .on('broadcast', { event: 'incoming_call' }, ({ payload }) => {
+            if (!payload || payload.recipientId !== profile.id || payload.callerId === profile.id) return;
+            if (activeCallRoom !== null || (typeof window !== 'undefined' && (window as any).shebloom_is_in_call)) return;
+
+            const callData: CallAlert = {
+              appointmentId: payload.appointmentId,
+              callerId: payload.callerId,
+              callerName: payload.callerName || 'Doctor',
+              callerAvatar: payload.callerAvatar,
+              recipientId: payload.recipientId,
+              roomUrl: payload.roomUrl,
+              date: payload.date,
+              slot: payload.slot,
+              expiresAt: payload.expiresAt || (Date.now() + 15 * 60 * 1000),
+              type: 'incoming_call',
+            };
+
+            setIncomingCall(callData);
+            try { sessionStorage.setItem('shebloom_pending_call_alert', JSON.stringify(callData)); } catch (e) {}
+
+            if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted' && document.hidden) {
+              new Notification('Doctor Joined Your Consultation', {
+                body: `${payload.callerName} has joined the video consultation. Tap to join!`,
+                icon: payload.callerAvatar || '/images/logo_icon.png',
+              });
+            }
+          })
+          .on('broadcast', { event: 'patient_is_waiting' }, ({ payload }) => {
+            if (!payload || payload.recipientId !== profile.id || payload.callerId === profile.id) return;
+            if (activeCallRoom !== null || (typeof window !== 'undefined' && (window as any).shebloom_is_in_call)) return;
+
+            const callData: CallAlert = {
+              appointmentId: payload.appointmentId,
+              callerId: payload.callerId,
+              callerName: payload.callerName || 'Patient',
+              callerAvatar: payload.callerAvatar,
+              recipientId: payload.recipientId,
+              roomUrl: payload.roomUrl,
+              date: payload.date,
+              slot: payload.slot,
+              expiresAt: payload.expiresAt || (Date.now() + 15 * 60 * 1000),
+              type: 'patient_is_waiting',
+            };
+
+            setIncomingCall(callData);
+            try { sessionStorage.setItem('shebloom_pending_call_alert', JSON.stringify(callData)); } catch (e) {}
+
+            if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted' && document.hidden) {
+              new Notification('Patient is Waiting', {
+                body: `${payload.callerName} is waiting to start the wellness session. Join now!`,
+                icon: payload.callerAvatar || '/images/logo_icon.png',
+              });
+            }
+          })
+          .subscribe();
+
+        roomChannelsRef.current.push(ch);
+      }
+    } catch (err) {
+      console.error('[Notification] Failed to subscribe to appointment rooms:', err);
+    }
+  };
+
   useEffect(() => {
     if (!profile?.id) return;
-
-    // Clean up previous subscriptions
-    roomChannelsRef.current.forEach((ch) => {
-      supabase.removeChannel(ch);
-    });
-    roomChannelsRef.current = [];
-
-    // Fetch user's appointments to know which rooms to subscribe to
-    const subscribeToAppointmentRooms = async () => {
-      try {
-        const res = await apiFetch('/appointments');
-        const appointments: any[] = res.appointments || [];
-
-        for (const appt of appointments) {
-          const roomName = `appointment-room-${appt.id}`;
-
-          const ch = supabase.channel(roomName, {
-            config: { broadcast: { self: false } },
-          });
-
-          ch
-            .on('broadcast', { event: 'incoming_call' }, ({ payload }) => {
-              if (!payload) return;
-
-              // STRICT recipient check: payload.recipientId MUST exactly match current user's ID
-              if (payload.recipientId !== profile.id) {
-                return;
-              }
-
-              // Don't show if caller is ourselves
-              if (payload.callerId === profile.id) return;
-
-              // Don't show if already in a call
-              if (activeCallRoom !== null || (typeof window !== 'undefined' && (window as any).shebloom_is_in_call)) {
-                return;
-              }
-
-              const callData: CallAlert = {
-                appointmentId: payload.appointmentId,
-                callerId: payload.callerId,
-                callerName: payload.callerName || 'Doctor',
-                callerAvatar: payload.callerAvatar,
-                recipientId: payload.recipientId,
-                roomUrl: payload.roomUrl,
-                date: payload.date,
-                slot: payload.slot,
-                expiresAt: payload.expiresAt || (Date.now() + 15 * 60 * 1000),
-                type: 'incoming_call',
-              };
-
-              setIncomingCall(callData);
-
-              try {
-                sessionStorage.setItem('shebloom_pending_call_alert', JSON.stringify(callData));
-              } catch (e) {}
-
-              // Browser push notification
-              if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted' && document.hidden) {
-                new Notification('Doctor Joined Your Consultation', {
-                  body: `${payload.callerName} has joined the video consultation. Tap to join!`,
-                  icon: payload.callerAvatar || '/images/logo_icon.png',
-                });
-              }
-            })
-            .on('broadcast', { event: 'patient_is_waiting' }, ({ payload }) => {
-              if (!payload) return;
-
-              // STRICT recipient check
-              if (payload.recipientId !== profile.id) {
-                return;
-              }
-
-              if (payload.callerId === profile.id) return;
-
-              if (activeCallRoom !== null || (typeof window !== 'undefined' && (window as any).shebloom_is_in_call)) {
-                return;
-              }
-
-              const callData: CallAlert = {
-                appointmentId: payload.appointmentId,
-                callerId: payload.callerId,
-                callerName: payload.callerName || 'Patient',
-                callerAvatar: payload.callerAvatar,
-                recipientId: payload.recipientId,
-                roomUrl: payload.roomUrl,
-                date: payload.date,
-                slot: payload.slot,
-                expiresAt: payload.expiresAt || (Date.now() + 15 * 60 * 1000),
-                type: 'patient_is_waiting',
-              };
-
-              setIncomingCall(callData);
-
-              try {
-                sessionStorage.setItem('shebloom_pending_call_alert', JSON.stringify(callData));
-              } catch (e) {}
-
-              if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted' && document.hidden) {
-                new Notification('Patient is Waiting', {
-                  body: `${payload.callerName} is waiting to start the wellness session. Join now!`,
-                  icon: payload.callerAvatar || '/images/logo_icon.png',
-                });
-              }
-            })
-            .subscribe();
-
-          roomChannelsRef.current.push(ch);
-        }
-      } catch (err) {
-        console.error('[Notification] Failed to subscribe to appointment rooms:', err);
-      }
-    };
-
     subscribeToAppointmentRooms();
-
     return () => {
-      roomChannelsRef.current.forEach((ch) => {
-        supabase.removeChannel(ch);
-      });
+      roomChannelsRef.current.forEach((ch) => supabase.removeChannel(ch));
       roomChannelsRef.current = [];
     };
   }, [profile?.id]);
 
-  // ─── Global Chat Message Notifications (unchanged — chat is not call-sensitive) ──
+  // ─── Global Notifications (New Bookings & Reschedules) ─────────────────────
+  useEffect(() => {
+    if (!profile?.id) return;
+
+    const notifChannel = supabase.channel('shebloom-notifications', {
+      config: { broadcast: { self: false } },
+    });
+
+    notifChannel
+      .on('broadcast', { event: 'new_appointment_booked' }, ({ payload }) => {
+        if (!payload) return;
+        const isTarget = payload.doctorId === profile.id || payload.recipientId === profile.id;
+        if (isTarget && payload.patientId !== profile.id) {
+          setGeneralToast({
+            id: Date.now().toString(),
+            title: '📅 New Consultation Booked',
+            body: `${payload.patientName || 'Patient'} booked a consultation for ${payload.date} at ${payload.slot}`,
+            type: 'appointment',
+            actionPath: '/consult',
+          });
+
+          if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted' && document.hidden) {
+            new Notification('📅 New Consultation Booked', {
+              body: `${payload.patientName || 'Patient'} booked a consultation for ${payload.date} at ${payload.slot}`,
+              icon: payload.patientAvatar || '/images/logo_icon.png',
+            });
+          }
+          subscribeToAppointmentRooms();
+        }
+      })
+      .on('broadcast', { event: 'appointment_rescheduled' }, ({ payload }) => {
+        if (!payload) return;
+        const isTarget = payload.recipientId === profile.id || payload.doctorId === profile.id || payload.patientId === profile.id;
+        if (isTarget && payload.rescheduledBy !== profile.id) {
+          setGeneralToast({
+            id: Date.now().toString(),
+            title: '🔄 Consultation Rescheduled',
+            body: `${payload.rescheduledByName || 'User'} rescheduled consultation to ${payload.newDate} at ${payload.newSlot}`,
+            type: 'reschedule',
+            actionPath: '/consult',
+          });
+
+          if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted' && document.hidden) {
+            new Notification('🔄 Consultation Rescheduled', {
+              body: `${payload.rescheduledByName || 'User'} rescheduled consultation to ${payload.newDate} at ${payload.newSlot}`,
+              icon: '/images/logo_icon.png',
+            });
+          }
+          subscribeToAppointmentRooms();
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(notifChannel);
+    };
+  }, [profile?.id]);
+
+  // ─── Global Chat Message Notifications ─────────────────────────────────────
   useEffect(() => {
     if (!profile?.id) return;
 
@@ -242,10 +272,11 @@ export function RealtimeNotificationProvider({ children }: { children: React.Rea
       .on('broadcast', { event: 'new_chat_message' }, ({ payload }) => {
         if (!payload) return;
 
-        // Strict recipient check for chat too
+        // Strict recipient check for chat (covers doctor accounts)
         const isRecipient =
           payload.recipientId === profile.id ||
-          payload.recipientUserId === profile.id;
+          payload.recipientUserId === profile.id ||
+          payload.doctorUserId === profile.id;
 
         if (isRecipient && payload.senderId !== profile.id) {
           const currentChatPath = `/chat/${payload.senderId}`;
@@ -415,6 +446,37 @@ export function RealtimeNotificationProvider({ children }: { children: React.Rea
             >
               Reply →
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ─── GENERAL NOTIFICATION TOAST (Bookings / Reschedules) ─────────── */}
+      {generalToast && (
+        <div className="fixed top-20 right-4 z-50 max-w-sm bg-slate-900 text-white rounded-2xl p-4 shadow-2xl border border-purple-500/40 animate-slide-down flex items-start gap-3">
+          <div className="h-10 w-10 rounded-xl bg-purple-900/80 text-purple-300 flex items-center justify-center shrink-0 border border-purple-700">
+            <Clock className="w-5 h-5" />
+          </div>
+
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between">
+              <h5 className="font-bold text-xs text-purple-300">{generalToast.title}</h5>
+              <button onClick={() => setGeneralToast(null)} className="text-slate-400 hover:text-white">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <p className="text-xs text-slate-200 mt-1 leading-snug">{generalToast.body}</p>
+            {generalToast.actionPath && (
+              <button
+                onClick={() => {
+                  const path = generalToast.actionPath!;
+                  setGeneralToast(null);
+                  router.push(path);
+                }}
+                className="text-[11px] font-bold text-pink-400 hover:underline mt-2 block"
+              >
+                View Details →
+              </button>
+            )}
           </div>
         </div>
       )}
