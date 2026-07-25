@@ -154,14 +154,30 @@ export default function ProfilePage() {
   const resolveSecureUrl = (url: string) => {
     if (!url) return '';
     const token = localStorage.getItem('token') || '';
-    const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
+    const baseUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api').replace(/\/+$/, '');
+
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      try {
+        const parsed = new URL(url);
+        if (!parsed.pathname.startsWith('/api/') && (parsed.pathname.startsWith('/health-records') || parsed.pathname.startsWith('/doctor-portal'))) {
+          parsed.pathname = `/api${parsed.pathname}`;
+        }
+        const sep = parsed.search ? '&' : '?';
+        return `${parsed.toString()}${sep}token=${token}`;
+      } catch (e) {
+        return url;
+      }
+    }
+
     let cleanUrl = url;
-    if (url.startsWith('/api')) {
-      cleanUrl = url.substring(4);
+    if (cleanUrl.startsWith('/api/')) {
+      cleanUrl = cleanUrl.substring(4);
+    } else if (cleanUrl === '/api') {
+      cleanUrl = '';
     }
     let path = cleanUrl;
     if (!path.startsWith('/health-records/documents/')) {
-      path = `/health-records/documents/${cleanUrl}`;
+      path = `/health-records/documents/${cleanUrl.replace(/^\/+/, '')}`;
     }
     const separator = path.includes('?') ? '&' : '?';
     return `${baseUrl}${path}${separator}token=${token}`;

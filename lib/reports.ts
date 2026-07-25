@@ -39,15 +39,30 @@ export async function openMedicalReport(fileUrl: string, fileName?: string): Pro
       token = session.access_token;
     }
   } catch (e) {}
-  const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
+  const baseUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api').replace(/\/+$/, '');
 
-  // Construct target API endpoint URL
+  // Construct target API endpoint URL safely
   let targetEndpoint = fileUrl;
-  if (!fileUrl.startsWith('http://') && !fileUrl.startsWith('https://')) {
-    let cleanPath = fileUrl;
-    if (cleanPath.startsWith('/api')) {
-      cleanPath = cleanPath.substring(4);
+
+  if (fileUrl.startsWith('http://') || fileUrl.startsWith('https://')) {
+    try {
+      const parsed = new URL(fileUrl);
+      // Ensure pathname includes '/api' prefix for backend API routes
+      if (!parsed.pathname.startsWith('/api/') && (parsed.pathname.startsWith('/health-records') || parsed.pathname.startsWith('/doctor-portal'))) {
+        parsed.pathname = `/api${parsed.pathname}`;
+      }
+      targetEndpoint = parsed.toString();
+    } catch (e) {
+      targetEndpoint = fileUrl;
     }
+  } else {
+    let cleanPath = fileUrl;
+    if (cleanPath.startsWith('/api/')) {
+      cleanPath = cleanPath.substring(4);
+    } else if (cleanPath === '/api') {
+      cleanPath = '';
+    }
+
     if (!cleanPath.startsWith('/')) {
       cleanPath = `/${cleanPath}`;
     }
