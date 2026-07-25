@@ -34,6 +34,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
+import { CONSULTATION_JOIN_WINDOW_MS, CONSULTATION_JOIN_WINDOW_MINUTES } from '@/lib/constants';
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -1062,7 +1063,7 @@ export default function ProfilePage() {
                           const [y, m, d] = (appt.appointment_date || '').split('-').map(Number);
                           const [h, min] = (appt.slot_time || '').split(':').map(Number);
                           const scheduledTime = new Date(y, (m || 1) - 1, d || 1, h || 0, min || 0, 0, 0);
-                          const graceEnd = new Date(scheduledTime.getTime() + 10 * 60 * 1000);
+                          const graceEnd = new Date(scheduledTime.getTime() + CONSULTATION_JOIN_WINDOW_MS);
                           const now = new Date();
                           const isJoinable = now >= scheduledTime && now <= graceEnd && ['confirmed', 'pending', 'rescheduled'].includes(appt.status || appt.display_status);
                           const isMissed = now > graceEnd || ['missed', 'cancelled'].includes(appt.status || appt.display_status);
@@ -1072,7 +1073,7 @@ export default function ProfilePage() {
                               <div className="w-full mt-1.5 p-2 bg-amber-50 border border-amber-200 rounded-xl text-[10px] text-amber-800 font-semibold flex flex-col gap-1.5">
                                 <div className="flex items-center gap-1.5">
                                   <Clock className="h-3.5 w-3.5 text-amber-600 shrink-0" />
-                                  <span>Please join within the 30-minute consultation window.</span>
+                                  <span>Please join within the {CONSULTATION_JOIN_WINDOW_MINUTES}-minute consultation window.</span>
                                 </div>
                                 <button
                                   onClick={() => router.push('/home')}

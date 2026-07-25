@@ -38,6 +38,7 @@ import {
 } from 'lucide-react';
 import { GradientButton } from '@/components/shebloom';
 import { cn } from '@/lib/utils';
+import { CONSULTATION_JOIN_WINDOW_MS, CONSULTATION_JOIN_WINDOW_MINUTES } from '@/lib/constants';
 
 const quickLinks = [
   { icon: MessageCircle, label: 'Chat with Doctor', href: '/consult', color: 'bg-bloom-100' },
@@ -177,7 +178,7 @@ export default function HomePage() {
     const [y, m, d] = (appointment.appointment_date || '').split('-').map(Number);
     const [h, min] = (appointment.slot_time || '').split(':').map(Number);
     const scheduledTime = new Date(y, (m || 1) - 1, d || 1, h || 0, min || 0, 0, 0);
-    const graceEnd = new Date(scheduledTime.getTime() + 30 * 60 * 1000); // Full 30-minute booking window
+    const graceEnd = new Date(scheduledTime.getTime() + CONSULTATION_JOIN_WINDOW_MS); // Configurable join window
     const now = new Date();
 
     const isTooEarly = now < scheduledTime;
@@ -201,7 +202,7 @@ export default function HomePage() {
     const [y, m, d] = (appointmentDate || '').split('-').map(Number);
     const [h, min] = (slotTime || '').split(':').map(Number);
     const scheduledTime = new Date(y, (m || 1) - 1, d || 1, h || 0, min || 0, 0, 0);
-    const graceEnd = new Date(scheduledTime.getTime() + 10 * 60 * 1000);
+    const graceEnd = new Date(scheduledTime.getTime() + CONSULTATION_JOIN_WINDOW_MS);
     const now = new Date();
     return now >= scheduledTime && now <= graceEnd;
   };
@@ -497,7 +498,7 @@ export default function HomePage() {
         if (profile?.role === 'doctor') {
           const upcoming = list.filter((a: any) => {
             const scheduled = parseApptTime(a.appointment_date, a.slot_time);
-            const graceEnd = new Date(scheduled.getTime() + 10 * 60 * 1000);
+            const graceEnd = new Date(scheduled.getTime() + CONSULTATION_JOIN_WINDOW_MS);
             return now <= graceEnd && ['confirmed', 'pending', 'rescheduled'].includes(a.status || a.display_status);
           });
           upcoming.sort((a: any, b: any) => parseApptTime(a.appointment_date, a.slot_time).getTime() - parseApptTime(b.appointment_date, b.slot_time).getTime());
@@ -505,7 +506,7 @@ export default function HomePage() {
           
           const previous = list.map((a: any) => {
             const scheduled = parseApptTime(a.appointment_date, a.slot_time);
-            const graceEnd = new Date(scheduled.getTime() + 10 * 60 * 1000);
+            const graceEnd = new Date(scheduled.getTime() + CONSULTATION_JOIN_WINDOW_MS);
             const isPast = now > graceEnd;
             let status = a.display_status || a.status;
             if (isPast && ['confirmed', 'pending', 'rescheduled'].includes(status)) {
@@ -514,7 +515,7 @@ export default function HomePage() {
             return { ...a, status };
           }).filter((a: any) => {
             const scheduled = parseApptTime(a.appointment_date, a.slot_time);
-            const graceEnd = new Date(scheduled.getTime() + 10 * 60 * 1000);
+            const graceEnd = new Date(scheduled.getTime() + CONSULTATION_JOIN_WINDOW_MS);
             return now > graceEnd || ['completed', 'cancelled', 'missed'].includes(a.status);
           });
           previous.sort((a: any, b: any) => parseApptTime(b.appointment_date, b.slot_time).getTime() - parseApptTime(a.appointment_date, a.slot_time).getTime());
@@ -522,7 +523,7 @@ export default function HomePage() {
         } else {
           const activeList = list.filter((a: any) => {
             const scheduled = parseApptTime(a.appointment_date, a.slot_time);
-            const graceEnd = new Date(scheduled.getTime() + 10 * 60 * 1000);
+            const graceEnd = new Date(scheduled.getTime() + CONSULTATION_JOIN_WINDOW_MS);
             return now <= graceEnd && ['confirmed', 'pending', 'rescheduled'].includes(a.status || a.display_status);
           });
           activeList.sort((a: any, b: any) => parseApptTime(a.appointment_date, a.slot_time).getTime() - parseApptTime(b.appointment_date, b.slot_time).getTime());
@@ -788,7 +789,7 @@ export default function HomePage() {
                       {state.isJoinable && (
                         <div className="text-[11px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-xl flex items-center gap-1.5 animate-pulse">
                           <Clock className="h-3.5 w-3.5 text-amber-600 shrink-0" />
-                          <span>⚠️ Please join within 10 minutes or this consultation will need to be rescheduled.</span>
+                          <span>⚠️ Please join within {CONSULTATION_JOIN_WINDOW_MINUTES} minutes or this consultation will need to be rescheduled.</span>
                         </div>
                       )}
 
