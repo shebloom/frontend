@@ -182,7 +182,7 @@ export default function HomePage() {
     const now = new Date();
 
     const isTooEarly = now < scheduledTime;
-    const isJoinable = now >= scheduledTime && now <= graceEnd && ['confirmed', 'pending', 'rescheduled'].includes(appointment.status || appointment.display_status);
+    const isJoinable = now >= scheduledTime && now <= graceEnd && ['confirmed', 'pending', 'rescheduled', 'completed'].includes(appointment.status || appointment.display_status);
     const isPastGrace = now > graceEnd || appointment.status === 'missed' || appointment.display_status === 'missed';
 
     return {
@@ -499,7 +499,8 @@ export default function HomePage() {
           const upcoming = list.filter((a: any) => {
             const scheduled = parseApptTime(a.appointment_date, a.slot_time);
             const graceEnd = new Date(scheduled.getTime() + CONSULTATION_JOIN_WINDOW_MS);
-            return now <= graceEnd && ['confirmed', 'pending', 'rescheduled'].includes(a.status || a.display_status);
+            // Include 'completed' so already-joined appointments stay visible for re-join during window
+            return now <= graceEnd && ['confirmed', 'pending', 'rescheduled', 'completed'].includes(a.status || a.display_status);
           });
           upcoming.sort((a: any, b: any) => parseApptTime(a.appointment_date, a.slot_time).getTime() - parseApptTime(b.appointment_date, b.slot_time).getTime());
           setUpcomingAppointments(upcoming);
@@ -524,7 +525,8 @@ export default function HomePage() {
           const activeList = list.filter((a: any) => {
             const scheduled = parseApptTime(a.appointment_date, a.slot_time);
             const graceEnd = new Date(scheduled.getTime() + CONSULTATION_JOIN_WINDOW_MS);
-            return now <= graceEnd && ['confirmed', 'pending', 'rescheduled'].includes(a.status || a.display_status);
+            // Include 'completed' so already-joined appointments stay visible for re-join during window
+            return now <= graceEnd && ['confirmed', 'pending', 'rescheduled', 'completed'].includes(a.status || a.display_status);
           });
           activeList.sort((a: any, b: any) => parseApptTime(a.appointment_date, a.slot_time).getTime() - parseApptTime(b.appointment_date, b.slot_time).getTime());
 
