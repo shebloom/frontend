@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { BloomLogo, SectionHeader } from '@/components/shebloom';
 import { useAuth } from '@/components/auth-provider';
 import { apiFetch } from '@/lib/api';
@@ -68,7 +68,10 @@ import { VideoRoomModal } from '@/components/shebloom/VideoRoomModal';
 
 export default function HomePage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { profile, user } = useAuth();
+  // Track whether the auto-join from ?joinCall= has already been triggered
+  const autoJoinFiredRef = useRef(false);
   
   const [upcomingAppointments, setUpcomingAppointments] = useState<any[]>([]);
   const [upcomingAppointment, setUpcomingAppointment] = useState<any>(null);
@@ -123,6 +126,10 @@ export default function HomePage() {
   // Video Room Modal State
   const [showVideoModal, setShowVideoModal] = useState(false);
   const [selectedVideoRoom, setSelectedVideoRoom] = useState<any>(null);
+
+  // Join Call in-progress + error state
+  const [joiningCallId, setJoiningCallId] = useState<string | null>(null);
+  const [joinError, setJoinError] = useState<string | null>(null);
 
   // Doctor Dashboard additional state
   const [previousAppointments, setPreviousAppointments] = useState<any[]>([]);
@@ -225,101 +232,141 @@ export default function HomePage() {
   };
 
   const handleJoinCall = async (appointmentId: string, appointment: any) => {
+    console.log('[handleJoinCall] ▶ called with appointmentId:', appointmentId);
+    setJoiningCallId(appointmentId);
+    setJoinError(null);
     try {
       const res = await apiFetch(`/appointments/${appointmentId}/join`);
+
+      // ── LOG FULL RAW RESPONSE for debugging ──────────────────────────────
+      console.log('[handleJoinCall] ✅ Raw /join response (full shape):', JSON.stringify(res, null, 2));
+      console.log('[handleJoinCall] Key fields → joinable:', res.joinable, '| joinUrl:', res.joinUrl, '| reason:', res.reason, '| error:', res.error);
+
       if (res.joinable) {
         const apptId = res.appointmentId || appointmentId;
         const isDoctor = profile?.role === 'doctor';
+        console.log('[handleJoinCall] ✅ joinable=true | isDoctor:', isDoctor, '| joinUrl:', res.joinUrl, '| patientName:', res.patientName, '| doctorName:', res.doctorName);
 
-        // Determine exact recipient user ID from the API response
-        // patientId and doctorUserId are returned by the join endpoint
-        const recipientUserId = isDoctor
-          ? (res.patientId || appointment?.patient_id)
-          : (res.doctorUserId || appointment?.doctor_id);
-
-        // Broadcast to ISOLATED appointment-specific channel (not global)
-        // This prevents ANY other user from receiving this notification
-        try {
-          const roomChannel = supabase.channel(`appointment-room-${apptId}`, {
-            config: { broadcast: { self: false } },
-          });
-
-          // Wait for subscription before sending
-          await new Promise<void>((resolve) => {
-            roomChannel.subscribe((status) => {
-              if (status === 'SUBSCRIBED') resolve();
-            });
-          });
-
-          if (isDoctor) {
-            // Doctor joins → patient should be notified with "Doctor has joined"
-            roomChannel.send({
-              type: 'broadcast',
-              event: 'incoming_call',
-              payload: {
-                appointmentId: apptId,
-                callerId: profile?.id,
-                callerName: profile?.full_name || 'Dr. Deepa Madhavan',
-                callerAvatar: profile?.avatar_url,
-                recipientId: recipientUserId,
-                doctorId: profile?.id,
-                patientId: recipientUserId,
-                roomUrl: res.joinUrl,
-                date: appointment?.appointment_date,
-                slot: appointment?.slot_time,
-                expiresAt: Date.now() + 15 * 60 * 1000,
-              },
-            });
-          } else {
-            // Patient joins → doctor should be notified with "Patient is waiting"
-            roomChannel.send({
-              type: 'broadcast',
-              event: 'patient_is_waiting',
-              payload: {
-                appointmentId: apptId,
-                callerId: profile?.id,
-                callerName: profile?.full_name || 'Patient',
-                callerAvatar: profile?.avatar_url,
-                recipientId: recipientUserId,
-                doctorId: recipientUserId,
-                patientId: profile?.id,
-                roomUrl: res.joinUrl,
-                date: appointment?.appointment_date,
-                slot: appointment?.slot_time,
-                expiresAt: Date.now() + 15 * 60 * 1000,
-              },
-            });
-          }
-        } catch (bcErr) {
-          console.warn('[Call] Realtime call broadcast error:', bcErr);
+        if (!res.joinUrl) {
+          const errMsg = 'Server returned joinable=true but joinUrl is missing. Check backend response.';
+          console.error('[handleJoinCall] ❌', errMsg, res);
+          setJoinError('Video room URL is missing. Please contact support.');
+          return;
         }
 
+        // ── OPEN THE MODAL FIRST ─────────────────────────────────────────────
+        // Always open the local modal immediately after a successful /join.
+        // The Supabase broadcast below is fire-and-forget — a slow or failed
+        // channel subscription must NEVER block the modal from appearing.
         if (isDoctor) {
+          console.log('[handleJoinCall] 🏥 Opening DOCTOR video modal...');
           setDoctorVideoRoom({
             url: res.joinUrl,
-            patientName: res.patientName,
+            patientName: res.patientName || 'Patient',
             patientId: res.patientId,
-            appointmentId: res.appointmentId,
+            appointmentId: apptId,
             date: appointment.appointment_date,
             slot: appointment.slot_time,
           });
           setShowDoctorVideoModal(true);
+          console.log('[handleJoinCall] 🏥 Doctor modal state set: showDoctorVideoModal=true');
         } else {
+          console.log('[handleJoinCall] 👤 Opening PATIENT video modal...');
           setSelectedVideoRoom({
             url: res.joinUrl,
-            doctorName: res.doctorName,
+            doctorName: res.doctorName || 'Dr. Deepa Madhavan',
+            appointmentId: apptId,
             date: appointment.appointment_date,
             slot: appointment.slot_time,
           });
           setShowVideoModal(true);
+          console.log('[handleJoinCall] 👤 Patient modal state set: showVideoModal=true, selectedVideoRoom.url:', res.joinUrl);
         }
-      } else if (res.error) {
-        alert(res.error);
+
+        // ── NOTIFY THE OTHER PARTY (fire-and-forget) ─────────────────────────
+        // Broadcast on the appointment-specific realtime channel so the other
+        // party receives an "incoming call" / "patient waiting" banner.
+        // This runs independently — any failure here does not affect the modal.
+        const recipientUserId = isDoctor
+          ? (res.patientId || appointment?.patient_id)
+          : (res.doctorUserId || appointment?.doctor_id);
+
+        void (async () => {
+          try {
+            const roomChannel = supabase.channel(`appointment-room-${apptId}`, {
+              config: { broadcast: { self: false } },
+            });
+
+            // Timeout after 5 s so a stalled subscription doesn't leak forever
+            await Promise.race([
+              new Promise<void>((resolve) => {
+                roomChannel.subscribe((status) => {
+                  if (status === 'SUBSCRIBED') resolve();
+                });
+              }),
+              new Promise<void>((_, reject) =>
+                setTimeout(() => reject(new Error('subscribe timeout')), 5000)
+              ),
+            ]);
+
+            roomChannel.send({
+              type: 'broadcast',
+              event: isDoctor ? 'incoming_call' : 'patient_is_waiting',
+              payload: isDoctor
+                ? {
+                    appointmentId: apptId,
+                    callerId: profile?.id,
+                    callerName: profile?.full_name || 'Dr. Deepa Madhavan',
+                    callerAvatar: profile?.avatar_url,
+                    recipientId: recipientUserId,
+                    doctorId: profile?.id,
+                    patientId: recipientUserId,
+                    roomUrl: res.joinUrl,
+                    date: appointment?.appointment_date,
+                    slot: appointment?.slot_time,
+                    expiresAt: Date.now() + 15 * 60 * 1000,
+                  }
+                : {
+                    appointmentId: apptId,
+                    callerId: profile?.id,
+                    callerName: profile?.full_name || 'Patient',
+                    callerAvatar: profile?.avatar_url,
+                    recipientId: recipientUserId,
+                    doctorId: recipientUserId,
+                    patientId: profile?.id,
+                    roomUrl: res.joinUrl,
+                    date: appointment?.appointment_date,
+                    slot: appointment?.slot_time,
+                    expiresAt: Date.now() + 15 * 60 * 1000,
+                  },
+            });
+          } catch (bcErr) {
+            console.warn('[Call] Realtime call broadcast error (non-blocking):', bcErr);
+          }
+        })();
+
+      } else {
+        // joinable is false — show a visible error message (never silent)
+        const errMsg = res.error || (res.reason === 'too_early'
+          ? `This consultation hasn't started yet. Please join at your scheduled time.`
+          : res.reason === 'expired'
+          ? `The join window for this consultation has expired. Please reschedule.`
+          : res.reason === 'inactive'
+          ? `This appointment is not active and cannot be joined.`
+          : 'Unable to join call: the server reported this appointment is not joinable.');
+        console.warn('[handleJoinCall] ⚠️ Not joinable | reason:', res.reason, '| error:', res.error, '| full response:', res);
+        setJoinError(errMsg);
+        // Auto-clear error after 8 seconds
+        setTimeout(() => setJoinError(null), 8000);
       }
     } catch (err: any) {
-      alert(err.message || 'Unable to join the call at this time.');
+      console.error('[handleJoinCall] ❌ Exception caught:', err);
+      const msg = err.message || 'Unable to join the call at this time. Please try again.';
+      setJoinError(msg);
+      setTimeout(() => setJoinError(null), 8000);
+    } finally {
+      setJoiningCallId(null);
     }
-
   };
 
   useEffect(() => {
@@ -594,6 +641,24 @@ export default function HomePage() {
     }
   }, [profile, router]);
 
+  // ─── Auto-join when redirected from profile page with ?joinCall={id} ──────────
+  useEffect(() => {
+    const joinCallId = searchParams?.get('joinCall');
+    if (!joinCallId || autoJoinFiredRef.current || isLoading) return;
+    if (!profile || profile.role === 'admin') return;
+
+    // Find the matching appointment in the loaded list
+    const match = upcomingAppointments.find((a: any) => a.id === joinCallId);
+    if (!match) return; // Appointments not loaded yet or not found — wait for next render
+
+    autoJoinFiredRef.current = true;
+    // Remove the query param from the URL without re-mounting the component
+    window.history.replaceState(null, '', '/home');
+    // Trigger the join call flow
+    handleJoinCall(joinCallId, match);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, isLoading, upcomingAppointments, profile]);
+
   const handleAddSlot = () => {
     // Check if slot already exists
     const duplicate = availabilitySlots.find(
@@ -795,18 +860,36 @@ export default function HomePage() {
                         </div>
                       )}
 
+                      {/* Join call error banner (doctor) */}
+                      {joinError && joiningCallId === null && (
+                        <div className="text-[11px] font-semibold text-red-700 bg-red-50 border border-red-200 px-3 py-1.5 rounded-xl flex items-center gap-1.5">
+                          <AlertCircle className="h-3.5 w-3.5 text-red-500 shrink-0" />
+                          <span>{joinError}</span>
+                        </div>
+                      )}
+
                       {/* Join Video Call Button */}
                       <button
                         onClick={() => handleJoinCall(appt.id, appt)}
+                        disabled={joiningCallId === appt.id}
                         className={cn(
-                          "w-full py-2.5 px-4 rounded-xl font-extrabold text-xs flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer",
+                          "w-full py-2.5 px-4 rounded-xl font-extrabold text-xs flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer disabled:opacity-80 disabled:cursor-not-allowed",
                           state.isJoinable
                             ? "bg-[#5b21b6] text-white hover:bg-[#4c1d95]"
                             : "bg-purple-100 text-[#5b21b6] hover:bg-purple-200"
                         )}
                       >
-                        <Video className="h-4 w-4" />
-                        {getCallButtonLabel(appt.appointment_date, appt.slot_time, appt)}
+                        {joiningCallId === appt.id ? (
+                          <>
+                            <span className="h-3.5 w-3.5 rounded-full border-2 border-current border-t-transparent animate-spin" />
+                            Connecting...
+                          </>
+                        ) : (
+                          <>
+                            <Video className="h-4 w-4" />
+                            {getCallButtonLabel(appt.appointment_date, appt.slot_time, appt)}
+                          </>
+                        )}
                       </button>
                     </div>
                   );
@@ -1424,6 +1507,14 @@ export default function HomePage() {
               </div>
             )}
 
+            {/* Join call error banner */}
+            {joinError && (
+              <div className="mt-3 text-[11px] font-semibold text-red-200 bg-red-950/40 border border-red-400/30 px-3 py-1.5 rounded-xl flex items-center gap-1.5">
+                <AlertCircle className="h-3.5 w-3.5 text-red-300 shrink-0" />
+                <span>{joinError}</span>
+              </div>
+            )}
+
             <div className="mt-4 flex gap-2.5">
               {getCallWindowState(upcomingAppointment).isPastGrace ? (
                 <button
@@ -1436,15 +1527,25 @@ export default function HomePage() {
               ) : (
                 <button
                   onClick={() => handleJoinCall(upcomingAppointment.id, upcomingAppointment)}
+                  disabled={joiningCallId === upcomingAppointment.id}
                   className={cn(
-                    "flex flex-1 items-center justify-center gap-1.5 rounded-xl font-extrabold py-2.5 text-xs shadow-md transition active:scale-95 cursor-pointer",
+                    "flex flex-1 items-center justify-center gap-1.5 rounded-xl font-extrabold py-2.5 text-xs shadow-md transition active:scale-95 cursor-pointer disabled:opacity-80 disabled:cursor-not-allowed",
                     isCallActive(upcomingAppointment.appointment_date, upcomingAppointment.slot_time, upcomingAppointment)
                       ? "bg-white text-bloom-700 hover:bg-white/90"
                       : "bg-purple-100 text-[#5b21b6] hover:bg-purple-200"
                   )}
                 >
-                  <Video className="h-4 w-4" />
-                  {getCallButtonLabel(upcomingAppointment.appointment_date, upcomingAppointment.slot_time, upcomingAppointment)}
+                  {joiningCallId === upcomingAppointment.id ? (
+                    <>
+                      <span className="h-3.5 w-3.5 rounded-full border-2 border-current border-t-transparent animate-spin" />
+                      Connecting...
+                    </>
+                  ) : (
+                    <>
+                      <Video className="h-4 w-4" />
+                      {getCallButtonLabel(upcomingAppointment.appointment_date, upcomingAppointment.slot_time, upcomingAppointment)}
+                    </>
+                  )}
                 </button>
               )}
               <button
@@ -1619,18 +1720,16 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Video Room Modal */}
-      {selectedVideoRoom && (
-        <VideoRoomModal
-          isOpen={showVideoModal}
-          onClose={() => setShowVideoModal(false)}
-          roomUrl={selectedVideoRoom.url}
-          doctorName={selectedVideoRoom.doctorName}
-          appointmentDate={selectedVideoRoom.date}
-          slotTime={selectedVideoRoom.slot}
-          appointmentId={selectedVideoRoom.appointmentId}
-        />
-      )}
+      {/* Video Room Modal — always rendered when open, selectedVideoRoom used for URL/names */}
+      <VideoRoomModal
+        isOpen={showVideoModal}
+        onClose={() => { setShowVideoModal(false); setSelectedVideoRoom(null); }}
+        roomUrl={selectedVideoRoom?.url || ''}
+        doctorName={selectedVideoRoom?.doctorName || 'Dr. Deepa Madhavan'}
+        appointmentDate={selectedVideoRoom?.date}
+        slotTime={selectedVideoRoom?.slot}
+        appointmentId={selectedVideoRoom?.appointmentId}
+      />
     </div>
   );
 }

@@ -1077,7 +1077,7 @@ export default function ProfilePage() {
                                   <span>Please join within the {CONSULTATION_JOIN_WINDOW_MINUTES}-minute consultation window.</span>
                                 </div>
                                 <button
-                                  onClick={() => router.push('/home')}
+                                  onClick={() => router.push(`/home?joinCall=${appt.id}`)}
                                   className="w-full py-1.5 bg-[#5b21b6] text-white font-bold text-xs rounded-lg hover:bg-[#4c1d95] transition cursor-pointer flex items-center justify-center gap-1"
                                 >
                                   <Video className="w-3.5 h-3.5" />
