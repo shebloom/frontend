@@ -367,6 +367,63 @@ export default function HomePage() {
     }
   };
 
+  const handleStartCall = async (appointmentId: string, appointment?: any) => {
+    console.log('[handleStartCall] ▶ doctor initiating call for appointmentId:', appointmentId);
+    setJoiningCallId(appointmentId);
+    setJoinError(null);
+    try {
+      const res = await apiFetch(`/appointments/${appointmentId}/start-call`, {
+        method: 'POST',
+      });
+      if (res.success) {
+        setDoctorVideoRoom({
+          url: res.joinUrl,
+          patientName: appointment?.users?.full_name || 'Patient',
+          patientId: appointment?.patient_id,
+          appointmentId: appointmentId,
+          date: appointment?.appointment_date,
+          slot: appointment?.slot_time,
+        });
+        setShowDoctorVideoModal(true);
+        setUpcomingAppointment((prev: any) => (prev ? { ...prev, call_started: true } : prev));
+      } else {
+        setJoinError(res.error || 'Failed to start consultation call');
+      }
+    } catch (err: any) {
+      console.error('[handleStartCall] Exception:', err);
+      setJoinError(err.message || 'Failed to start consultation call');
+    } finally {
+      setJoiningCallId(null);
+    }
+  };
+
+  useEffect(() => {
+    const joinCallId = searchParams.get('joinCall');
+    if (joinCallId && !autoJoinFiredRef.current) {
+      autoJoinFiredRef.current = true;
+      console.log('[HomePage] Auto-joining call from URL query param:', joinCallId);
+      if (profile?.role === 'doctor') {
+        handleStartCall(joinCallId);
+      } else {
+        handleJoinCall(joinCallId, null);
+      }
+    }
+  }, [searchParams, profile]);
+
+  useEffect(() => {
+    if (!upcomingAppointment?.id) return;
+    const ch = supabase.channel(`appointment-room-${upcomingAppointment.id}`)
+      .on('broadcast', { event: 'incoming_call' }, () => {
+        console.log('[HomePage] Received incoming_call broadcast! Setting call_started=true');
+        setUpcomingAppointment((prev: any) => (prev ? { ...prev, call_started: true } : prev));
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(ch);
+    };
+  }, [upcomingAppointment?.id]);
+
   useEffect(() => {
     const h = new Date().getHours();
     const base = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
@@ -1522,30 +1579,68 @@ export default function HomePage() {
                   <Calendar className="h-4 w-4" />
                   Reschedule Consultation
                 </button>
-              ) : (
-                <button
-                  onClick={() => handleJoinCall(upcomingAppointment.id, upcomingAppointment)}
-                  disabled={joiningCallId === upcomingAppointment.id}
-                  className={cn(
-                    "flex flex-1 items-center justify-center gap-1.5 rounded-xl font-extrabold py-2.5 text-xs shadow-md transition active:scale-95 cursor-pointer disabled:opacity-80 disabled:cursor-not-allowed",
-                    isCallActive(upcomingAppointment.appointment_date, upcomingAppointment.slot_time, upcomingAppointment)
-                      ? "bg-white text-bloom-700 hover:bg-white/90"
-                      : "bg-purple-100 text-[#5b21b6] hover:bg-purple-200"
-                  )}
-                >
-                  {joiningCallId === upcomingAppointment.id ? (
-                    <>
-                      <span className="h-3.5 w-3.5 rounded-full border-2 border-current border-t-transparent animate-spin" />
-                      Connecting...
-                    </>
-                  ) : (
-                    <>
-                      <Video className="h-4 w-4" />
-                      {getCallButtonLabel(upcomingAppointment.appointment_date, upcomingAppointment.slot_time, upcomingAppointment)}
-                    </>
-                  )}
-                </button>
-              )}
+              ) : (() => {
+                const isDoc = (profile?.role as string) === 'doctor';
+                const isWindowActive = getCallWindowState(upcomingAppointment).isJoinable;
+                const callStarted = upcomingAppointment.call_started;
+                const doctorName = upcomingAppointment?.doctors?.users?.full_name || 'Doctor';
+
+                if (isDoc) {
+                  return (
+                    <button
+                      onClick={() => handleStartCall(upcomingAppointment.id, upcomingAppointment)}
+                      disabled={joiningCallId === upcomingAppointment.id || !isWindowActive}
+                      className={cn(
+                        "flex flex-1 items-center justify-center gap-1.5 rounded-xl font-extrabold py-2.5 text-xs shadow-md transition active:scale-95 cursor-pointer disabled:opacity-80 disabled:cursor-not-allowed",
+                        isWindowActive ? "bg-white text-bloom-700 hover:bg-white/90" : "bg-purple-100 text-[#5b21b6]"
+                      )}
+                    >
+                      {joiningCallId === upcomingAppointment.id ? (
+                        <>
+                          <span className="h-3.5 w-3.5 rounded-full border-2 border-current border-t-transparent animate-spin" />
+                          Starting Call...
+                        </>
+                      ) : (
+                        <>
+                          <Video className="h-4 w-4" />
+                          {isWindowActive ? (callStarted ? 'Re-Join Consultation' : 'Start Consultation') : getCallButtonLabel(upcomingAppointment.appointment_date, upcomingAppointment.slot_time, upcomingAppointment)}
+                        </>
+                      )}
+                    </button>
+                  );
+                }
+
+                // Patient View
+                return (
+                  <button
+                    onClick={() => handleJoinCall(upcomingAppointment.id, upcomingAppointment)}
+                    disabled={joiningCallId === upcomingAppointment.id || (isWindowActive && !callStarted)}
+                    className={cn(
+                      "flex flex-1 items-center justify-center gap-1.5 rounded-xl font-extrabold py-2.5 text-xs shadow-md transition active:scale-95 cursor-pointer disabled:opacity-80 disabled:cursor-not-allowed",
+                      isWindowActive && callStarted
+                        ? "bg-white text-bloom-700 hover:bg-white/90"
+                        : "bg-purple-100/90 text-[#5b21b6]"
+                    )}
+                  >
+                    {joiningCallId === upcomingAppointment.id ? (
+                      <>
+                        <span className="h-3.5 w-3.5 rounded-full border-2 border-current border-t-transparent animate-spin" />
+                        Connecting...
+                      </>
+                    ) : isWindowActive && !callStarted ? (
+                      <>
+                        <Clock className="h-4 w-4 animate-spin text-[#5b21b6]" />
+                        Waiting for {doctorName} to start...
+                      </>
+                    ) : (
+                      <>
+                        <Video className="h-4 w-4" />
+                        {getCallButtonLabel(upcomingAppointment.appointment_date, upcomingAppointment.slot_time, upcomingAppointment)}
+                      </>
+                    )}
+                  </button>
+                );
+              })()}
               <button
                 onClick={() => {
                   if (chatDoctorHref && chatDoctorHref.startsWith('/chat/')) {

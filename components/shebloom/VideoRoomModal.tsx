@@ -522,13 +522,31 @@ export function VideoRoomModal({
     }
   }, [remoteStream, hasRemoteVideo, remoteCameraOn]);
 
+  useEffect(() => {
+    if (isOpen && appointmentId) {
+      apiFetch(`/appointments/${appointmentId}/events/presence`, {
+        method: 'POST',
+        body: JSON.stringify({ event: 'joined' }),
+      }).catch(() => {});
+    }
+  }, [isOpen, appointmentId]);
+
   const handleClose = () => {
     if (localStream) {
       localStream.getTracks().forEach(track => track.stop());
       setLocalStream(null);
     }
+    if (appointmentId) {
+      void apiFetch(`/appointments/${appointmentId}/events/presence`, {
+        method: 'POST',
+        body: JSON.stringify({ event: 'left' }),
+      }).catch(() => {});
+      void apiFetch(`/appointments/${appointmentId}/end`, {
+        method: 'POST',
+      }).catch(() => {});
+    }
     onClose();
-    router.push('/profile');
+    router.push('/home');
   };
 
   if (!isOpen) return null;
