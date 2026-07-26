@@ -44,7 +44,7 @@ const quickLinks = [
   { icon: MessageCircle, label: 'Chat with Doctor', href: '/consult', color: 'bg-bloom-100' },
   { icon: Calendar,      label: 'Cycle Tracker',     href: '/cycle',    color: 'bg-petal-100' },
   { icon: Activity,      label: 'Symptoms Check',    href: '/health',   color: 'bg-green-100' },
-  { icon: BookOpen,      label: 'Wellness Library',  href: '/programs', color: 'bg-amber-100' },
+  { icon: BookOpen,      label: 'Wellness Library',  href: '/wellness-session', color: 'bg-amber-100' },
 ];
 
 const daysOfWeekList = [
@@ -1729,7 +1729,7 @@ export default function HomePage() {
             { icon: MessageCircle, label: 'Chat with Doctor', href: chatDoctorHref, color: 'bg-bloom-100', onClick: handleChatWithDoctorClick },
             { icon: Calendar,      label: 'Cycle Tracker',    href: '/cycle',         color: 'bg-petal-100' },
             { icon: Activity,      label: 'Symptoms Check',   href: '/health',        color: 'bg-green-100' },
-            { icon: BookOpen,      label: 'Wellness Library', href: '/programs',      color: 'bg-amber-100' },
+            { icon: BookOpen,      label: 'Wellness Library', href: '/wellness-session', color: 'bg-amber-100' },
           ].map((link) => {
             const Icon = link.icon;
             if (link.onClick) {

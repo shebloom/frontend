@@ -21,13 +21,7 @@ export default function YogaCoursePlaylistPage() {
   const router = useRouter();
   const conditionId = params.id as string;
 
-  useEffect(() => {
-    if (conditionId) {
-      router.replace(`/programs/${conditionId}`);
-    } else {
-      router.replace('/programs');
-    }
-  }, [conditionId, router]);
+// Course Playlist page for wellness conditions
 
   const [condition, setCondition] = useState<any>(null);
   const [videos, setVideos] = useState<any[]>([]);
@@ -85,7 +79,7 @@ export default function YogaCoursePlaylistPage() {
       <div className="p-8 text-center max-w-sm mx-auto space-y-4">
         <p className="text-sm font-bold text-slate-600">Course category not found.</p>
         <button
-          onClick={() => router.push('/wellness')}
+          onClick={() => router.push('/wellness-session')}
           className="px-4 py-2 bg-[#5b21b6] text-white text-xs font-bold rounded-full"
         >
           Back to Yoga Library
@@ -102,7 +96,7 @@ export default function YogaCoursePlaylistPage() {
       {/* Header Back Button */}
       <div className="flex items-center gap-3">
         <button
-          onClick={() => router.push('/wellness')}
+          onClick={() => router.push('/wellness-session')}
           className="w-9 h-9 rounded-full bg-white border border-slate-200 flex items-center justify-center text-slate-600 hover:bg-slate-50 transition-colors shadow-2xs"
         >
           <ArrowLeft className="w-4 h-4" />

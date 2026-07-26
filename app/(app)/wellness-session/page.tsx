@@ -15,11 +15,8 @@ const DEFAULT_FILTER_CATEGORIES = [
   'Yoga & Mindfulness',
 ];
 
-export default function WellnessCategoryHubPage() {
+export default function WellnessSessionPage() {
   const router = useRouter();
-  useEffect(() => {
-    router.replace('/wellness-session');
-  }, [router]);
   const [sessions, setSessions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
@@ -204,7 +201,7 @@ export default function WellnessCategoryHubPage() {
                   </span>
                 </h2>
                 <div className="grid gap-3.5">
-                  {catSessions.map((sess, idx) => (
+                  {catSessions.map((sess) => (
                     <div
                       key={sess.id}
                       onClick={() => {
