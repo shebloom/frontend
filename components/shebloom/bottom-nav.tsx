@@ -10,7 +10,7 @@ const patientNav = [
   { id: 'home',     label: 'Home',     icon: Home,        href: '/home' },
   { id: 'consult',  label: 'Consult',  icon: Stethoscope, href: '/consult' },
   { id: 'diet-plan', label: 'Diet Plan', icon: Utensils,  href: '/diet-plan' },
-  { id: 'wellness', label: 'Programs', icon: Sparkles,    href: '/programs' },
+  { id: 'wellness', label: 'Wellness Sessions', icon: Sparkles, href: '/programs' },
   { id: 'profile',  label: 'Profile',  icon: User,        href: '/profile' },
 ];
 
