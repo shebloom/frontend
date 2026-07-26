@@ -24,6 +24,7 @@ import {
   ChevronRight,
   X,
   HeartPulse,
+  Bell,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { apiFetch } from '@/lib/api';
@@ -531,6 +532,44 @@ export function VideoRoomModal({
     }
   }, [isOpen, appointmentId]);
 
+  const [notifySuccess, setNotifySuccess] = useState('');
+  const [isNotifying, setIsNotifying] = useState(false);
+  const [declinedAlert, setDeclinedAlert] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isOpen || !appointmentId) return;
+    const channel = supabase.channel(`appointment-room-${appointmentId}`)
+      .on('broadcast', { event: 'call_declined' }, ({ payload }) => {
+        console.log('[VideoRoomModal] Patient declined call alert received:', payload);
+        if ((profile?.role as string) === 'doctor') {
+          setDeclinedAlert(`${payload?.patientName || 'Patient'} declined the incoming call notification. Tap "Notify Patient Again" whenever you wish to ring them.`);
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [isOpen, appointmentId, profile]);
+
+  const handleNotifyPatientAgain = async () => {
+    if (!appointmentId) return;
+    setIsNotifying(true);
+    setNotifySuccess('');
+    setDeclinedAlert(null);
+    try {
+      await apiFetch(`/appointments/${appointmentId}/start-call`, {
+        method: 'POST',
+      });
+      setNotifySuccess('Notification sent to patient!');
+      setTimeout(() => setNotifySuccess(''), 4500);
+    } catch (err: any) {
+      console.error('Notify patient error:', err);
+    } finally {
+      setIsNotifying(false);
+    }
+  };
+
   const handleClose = () => {
     if (localStream) {
       localStream.getTracks().forEach(track => track.stop());
@@ -610,6 +649,21 @@ export function VideoRoomModal({
           </div>
 
           <div className="flex items-center gap-2.5">
+            {(profile?.role as string) === 'doctor' && (
+              <button
+                onClick={handleNotifyPatientAgain}
+                disabled={isNotifying}
+                className="px-3 py-1.5 bg-gradient-to-r from-bloom-600 to-purple-600 hover:from-bloom-700 hover:to-purple-700 text-white font-bold text-xs rounded-xl shadow-md transition active:scale-95 flex items-center gap-1.5 disabled:opacity-60 cursor-pointer"
+                title="Ring / Re-notify patient of incoming call"
+              >
+                {isNotifying ? (
+                  <span className="h-3.5 w-3.5 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                ) : (
+                  <Bell className="w-3.5 h-3.5" />
+                )}
+                <span>Notify Patient Again</span>
+              </button>
+            )}
             <span className="text-xs font-bold font-mono text-purple-300 bg-purple-950/60 px-3 py-1 rounded-full border border-purple-800/40">
               {formatDuration(callDuration)}
             </span>
@@ -621,6 +675,19 @@ export function VideoRoomModal({
             </button>
           </div>
         </div>
+
+        {/* Alert Banners for Notifications & Declines */}
+        {notifySuccess && (
+          <div className="bg-emerald-950/90 text-emerald-200 border-b border-emerald-500/40 px-5 py-2 text-xs font-semibold flex items-center justify-between animate-fade-in z-20">
+            <span>🔔 {notifySuccess}</span>
+          </div>
+        )}
+        {declinedAlert && (
+          <div className="bg-amber-950/90 text-amber-200 border-b border-amber-500/40 px-5 py-2 text-xs font-semibold flex items-center justify-between animate-fade-in z-20">
+            <span>⚠️ {declinedAlert}</span>
+            <button onClick={() => setDeclinedAlert(null)} className="text-amber-400 hover:text-amber-200 text-xs font-bold ml-3 underline">Dismiss</button>
+          </div>
+        )}
 
         {/* Main Body (Horizontal split if showPatientInfo is active) */}
         <div className="flex-1 flex overflow-hidden">

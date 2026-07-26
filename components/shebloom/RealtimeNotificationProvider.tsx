@@ -365,6 +365,30 @@ export function RealtimeNotificationProvider({ children }: { children: React.Rea
   };
 
   const handleDeclineCall = () => {
+    if (incomingCall?.appointmentId) {
+      try {
+        const payload = {
+          appointmentId: incomingCall.appointmentId,
+          patientId: profile?.id,
+          patientName: profile?.full_name || 'Patient',
+          declinedAt: Date.now(),
+        };
+        const roomChannel = supabase.channel(`appointment-room-${incomingCall.appointmentId}`, {
+          config: { broadcast: { self: false } },
+        });
+        roomChannel.subscribe((status) => {
+          if (status === 'SUBSCRIBED') {
+            roomChannel.send({ type: 'broadcast', event: 'call_declined', payload }).catch(() => {});
+          }
+        });
+        roomChannel.send({ type: 'broadcast', event: 'call_declined', payload }).catch(() => {});
+
+        const notifChannel = supabase.channel('shebloom-notifications');
+        notifChannel.send({ type: 'broadcast', event: 'call_declined', payload }).catch(() => {});
+      } catch (e) {
+        console.warn('[CallDecline] Broadcast error:', e);
+      }
+    }
     setIncomingCall(null);
     sessionStorage.removeItem('shebloom_pending_call_alert');
   };
