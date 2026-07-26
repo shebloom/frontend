@@ -21,6 +21,14 @@ export default function YogaCoursePlaylistPage() {
   const router = useRouter();
   const conditionId = params.id as string;
 
+  useEffect(() => {
+    if (conditionId) {
+      router.replace(`/programs/${conditionId}`);
+    } else {
+      router.replace('/programs');
+    }
+  }, [conditionId, router]);
+
   const [condition, setCondition] = useState<any>(null);
   const [videos, setVideos] = useState<any[]>([]);
   const [activeVideo, setActiveVideo] = useState<any>(null);

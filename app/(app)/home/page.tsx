@@ -44,7 +44,7 @@ const quickLinks = [
   { icon: MessageCircle, label: 'Chat with Doctor', href: '/consult', color: 'bg-bloom-100' },
   { icon: Calendar,      label: 'Cycle Tracker',     href: '/cycle',    color: 'bg-petal-100' },
   { icon: Activity,      label: 'Symptoms Check',    href: '/health',   color: 'bg-green-100' },
-  { icon: BookOpen,      label: 'Wellness Library',  href: '/wellness', color: 'bg-amber-100' },
+  { icon: BookOpen,      label: 'Wellness Library',  href: '/programs', color: 'bg-amber-100' },
 ];
 
 const daysOfWeekList = [
@@ -1657,7 +1657,7 @@ export default function HomePage() {
           </div>
         ) : (
           /* Wellness Program Promo / CTA Card in same section if no booking exists */
-          <Link href="/wellness" className="block">
+          <Link href="/programs" className="block">
             <div className="relative h-44 overflow-hidden rounded-3xl shadow-bloom-card border border-bloom-100">
               <img
                 src="https://images.pexels.com/photos/3822621/pexels-photo-3822621.jpeg?auto=compress&cs=tinysrgb&w=600"
@@ -1729,7 +1729,7 @@ export default function HomePage() {
             { icon: MessageCircle, label: 'Chat with Doctor', href: chatDoctorHref, color: 'bg-bloom-100', onClick: handleChatWithDoctorClick },
             { icon: Calendar,      label: 'Cycle Tracker',    href: '/cycle',         color: 'bg-petal-100' },
             { icon: Activity,      label: 'Symptoms Check',   href: '/health',        color: 'bg-green-100' },
-            { icon: BookOpen,      label: 'Wellness Library', href: '/wellness',      color: 'bg-amber-100' },
+            { icon: BookOpen,      label: 'Wellness Library', href: '/programs',      color: 'bg-amber-100' },
           ].map((link) => {
             const Icon = link.icon;
             if (link.onClick) {
@@ -1771,9 +1771,9 @@ export default function HomePage() {
       <section className="px-5 pt-6">
         <SectionHeader
           title="Recommended for You"
-          action={<Link href="/wellness" className="text-sm font-medium text-bloom-600">See all</Link>}
+          action={<Link href="/programs" className="text-sm font-medium text-bloom-600">See all</Link>}
         />
-        <Link href="/wellness" className="mt-3 block">
+        <Link href="/programs" className="mt-3 block">
           <div className="relative h-40 overflow-hidden rounded-3xl shadow-bloom-card">
             <img
               src="https://images.pexels.com/photos/3822621/pexels-photo-3822621.jpeg?auto=compress&cs=tinysrgb&w=600"

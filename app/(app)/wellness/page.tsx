@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { Sparkles, Play, Clock, X, Search, Filter, Video } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 
@@ -15,6 +16,10 @@ const DEFAULT_FILTER_CATEGORIES = [
 ];
 
 export default function WellnessCategoryHubPage() {
+  const router = useRouter();
+  useEffect(() => {
+    router.replace('/programs');
+  }, [router]);
   const [sessions, setSessions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
